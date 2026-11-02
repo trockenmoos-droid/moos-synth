@@ -4,7 +4,11 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_dsp/juce_dsp.h>
 #include "Wavetable.h"
-#include "SynthVoice.h"
+#include "SynthEngine.h"
+#include "Arpeggiator.h"
+#include "Effects.h"
+#include "Presets.h"
+#include "MossBackground.h"
 
 class MoosProcessor : public juce::AudioProcessor
 {
@@ -25,36 +29,57 @@ public:
     bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 8.0; }
+    double getTailLengthSeconds() const override { return 10.0; }
 
-    int getNumPrograms() override    { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return "Init"; }
+    int getNumPrograms() override;
+    int getCurrentProgram() override { return currentProgram; }
+    void setCurrentProgram (int) override;
+    const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
-
+    // --- für die Oberfläche ---
     juce::AudioProcessorValueTreeState apvts;
     juce::MidiKeyboardState keyboardState;
-    const WavetableBank& getBank() const { return bank; }
+
+    const WavetableBank* getBank (int osc) const { return engine.getBank (osc); }
+    juce::String loadWavetable (int osc, const juce::File& file);    // "" = ok, sonst Fehlermeldung
+    void resetWavetable (int osc);
+
+    void loadFactoryPreset (int index);
+    juce::String loadUserPreset (const juce::File& file);
+    bool saveUserPreset (const juce::File& file);
+    juce::String getPresetName() const { return apvts.state.getProperty ("presetName", "Init Moos").toString(); }
+
+    float getLfoValue (int i) const { return engine.getLfoValue (i); }
+    std::atomic<int> presetChangeCounter { 0 };
 
 private:
-    WavetableBank bank;
-    PadParams params;
-    juce::Synthesiser synth;
+    std::unique_ptr<WavetableBank> factoryBank;
+    std::vector<std::unique_ptr<WavetableBank>> loadedBanks;   // bleiben am Leben (Audio-Thread liest evtl. noch)
+    juce::CriticalSection bankLock;
 
+    SynthEngine engine;
+    Arpeggiator arp;
+    juce::MidiBuffer arpMidi;
+
+    HighPass hpf;
     juce::dsp::Chorus<float> chorus;
-    juce::dsp::Reverb reverb;
+    PingPongDelay delay;
+    ShimmerReverb reverb;
     juce::SmoothedValue<float> masterGain;
 
-    std::atomic<float>* chorusMix {};
-    std::atomic<float>* reverbSize {};
-    std::atomic<float>* reverbMix {};
-    std::atomic<float>* volume {};
+    int currentProgram = 0;
+    juce::SharedResourcePointer<MossBackground::MossCache> mossCache;   // Textur schon vorab rechnen
+
+    using AF = std::atomic<float>*;
+    AF hpfHz{}, chorusMix{}, reverbSize{}, reverbMix{}, shimmer{}, volume{};
+    AF delaySync{}, delayDiv{}, delayTime{}, delayFb{}, delayMix{};
+    AF arpOn{}, arpMode{}, arpRate{}, arpOct{}, arpGate{};
+
+    void restoreWavetables();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MoosProcessor)
 };

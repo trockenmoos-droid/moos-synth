@@ -1,83 +1,22 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-using APVTS = juce::AudioProcessorValueTreeState;
-
-static juce::NormalisableRange<float> skewed (float lo, float hi, float centre)
-{
-    juce::NormalisableRange<float> r (lo, hi);
-    r.setSkewForCentre (centre);
-    return r;
-}
-
-APVTS::ParameterLayout MoosProcessor::createLayout()
-{
-    using P  = juce::AudioParameterFloat;
-    using PI = juce::AudioParameterInt;
-    using ID = juce::ParameterID;
-    std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
-
-    // Oszillator A
-    p.push_back (std::make_unique<P>  (ID { "posA", 1 },   "Osc A Position", 0.0f, 1.0f, 0.3f));
-    p.push_back (std::make_unique<PI> (ID { "octA", 1 },   "Osc A Octave", -2, 2, 0));
-    p.push_back (std::make_unique<P>  (ID { "levelA", 1 }, "Osc A Level", 0.0f, 1.0f, 0.8f));
-    // Oszillator B
-    p.push_back (std::make_unique<P>  (ID { "posB", 1 },   "Osc B Position", 0.0f, 1.0f, 0.6f));
-    p.push_back (std::make_unique<PI> (ID { "octB", 1 },   "Osc B Octave", -2, 2, -1));
-    p.push_back (std::make_unique<P>  (ID { "fineB", 1 },  "Osc B Fine (ct)", -100.0f, 100.0f, 7.0f));
-    p.push_back (std::make_unique<P>  (ID { "levelB", 1 }, "Osc B Level", 0.0f, 1.0f, 0.5f));
-    // Unison
-    p.push_back (std::make_unique<PI> (ID { "uniVoices", 1 }, "Unison Voices", 1, PadVoice::maxUnison, 5));
-    p.push_back (std::make_unique<P>  (ID { "uniDetune", 1 }, "Unison Detune (ct)", 0.0f, 60.0f, 14.0f));
-    p.push_back (std::make_unique<P>  (ID { "uniWidth", 1 },  "Unison Width", 0.0f, 1.0f, 0.85f));
-    // Filter
-    p.push_back (std::make_unique<P> (ID { "cutoff", 1 }, "Cutoff (Hz)", skewed (20.0f, 20000.0f, 1200.0f), 1800.0f));
-    p.push_back (std::make_unique<P> (ID { "reso", 1 },   "Resonance", 0.0f, 1.0f, 0.25f));
-    p.push_back (std::make_unique<P> (ID { "envAmt", 1 }, "Filter Env Amount", -1.0f, 1.0f, 0.3f));
-    p.push_back (std::make_unique<P> (ID { "fA", 1 }, "Filter Attack (s)",  skewed (0.001f, 10.0f, 1.0f), 1.5f));
-    p.push_back (std::make_unique<P> (ID { "fD", 1 }, "Filter Decay (s)",   skewed (0.001f, 10.0f, 1.0f), 2.5f));
-    p.push_back (std::make_unique<P> (ID { "fS", 1 }, "Filter Sustain",     0.0f, 1.0f, 0.4f));
-    p.push_back (std::make_unique<P> (ID { "fR", 1 }, "Filter Release (s)", skewed (0.001f, 15.0f, 1.5f), 3.0f));
-    // Amp-Hüllkurve
-    p.push_back (std::make_unique<P> (ID { "aA", 1 }, "Amp Attack (s)",  skewed (0.001f, 10.0f, 1.0f), 0.8f));
-    p.push_back (std::make_unique<P> (ID { "aD", 1 }, "Amp Decay (s)",   skewed (0.001f, 10.0f, 1.0f), 1.0f));
-    p.push_back (std::make_unique<P> (ID { "aS", 1 }, "Amp Sustain",     0.0f, 1.0f, 0.85f));
-    p.push_back (std::make_unique<P> (ID { "aR", 1 }, "Amp Release (s)", skewed (0.001f, 15.0f, 1.5f), 3.5f));
-    // LFO
-    p.push_back (std::make_unique<P> (ID { "lfoRate", 1 }, "LFO Rate (Hz)", skewed (0.01f, 10.0f, 0.5f), 0.12f));
-    p.push_back (std::make_unique<P> (ID { "lfoPos", 1 },  "LFO -> Position", 0.0f, 1.0f, 0.35f));
-    p.push_back (std::make_unique<P> (ID { "lfoCut", 1 },  "LFO -> Cutoff", 0.0f, 1.0f, 0.15f));
-    // Effekte
-    p.push_back (std::make_unique<P> (ID { "chorusMix", 1 },  "Chorus Mix", 0.0f, 1.0f, 0.35f));
-    p.push_back (std::make_unique<P> (ID { "reverbSize", 1 }, "Reverb Size", 0.0f, 1.0f, 0.85f));
-    p.push_back (std::make_unique<P> (ID { "reverbMix", 1 },  "Reverb Mix", 0.0f, 1.0f, 0.4f));
-    p.push_back (std::make_unique<P> (ID { "volume", 1 },     "Volume (dB)", -48.0f, 6.0f, -6.0f));
-
-    return { p.begin(), p.end() };
-}
-
 MoosProcessor::MoosProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "MOOS", createLayout())
+      apvts (*this, nullptr, "MOOS", MoosParams::createLayout())
 {
     auto get = [this] (const char* id) { return apvts.getRawParameterValue (id); };
+    hpfHz = get ("hpf"); chorusMix = get ("chorusMix"); reverbSize = get ("reverbSize");
+    reverbMix = get ("reverbMix"); shimmer = get ("shimmer"); volume = get ("volume");
+    delaySync = get ("delaySync"); delayDiv = get ("delayDiv"); delayTime = get ("delayTime");
+    delayFb = get ("delayFb"); delayMix = get ("delayMix");
+    arpOn = get ("arpOn"); arpMode = get ("arpMode"); arpRate = get ("arpRate"); arpOct = get ("arpOct"); arpGate = get ("arpGate");
 
-    params.posA = get ("posA");   params.octA = get ("octA");   params.levelA = get ("levelA");
-    params.posB = get ("posB");   params.octB = get ("octB");   params.fineB = get ("fineB"); params.levelB = get ("levelB");
-    params.uniVoices = get ("uniVoices"); params.uniDetune = get ("uniDetune"); params.uniWidth = get ("uniWidth");
-    params.cutoff = get ("cutoff"); params.reso = get ("reso"); params.envAmt = get ("envAmt");
-    params.fA = get ("fA"); params.fD = get ("fD"); params.fS = get ("fS"); params.fR = get ("fR");
-    params.aA = get ("aA"); params.aD = get ("aD"); params.aS = get ("aS"); params.aR = get ("aR");
-    params.lfoRate = get ("lfoRate"); params.lfoPos = get ("lfoPos"); params.lfoCut = get ("lfoCut");
-
-    chorusMix  = get ("chorusMix");
-    reverbSize = get ("reverbSize");
-    reverbMix  = get ("reverbMix");
-    volume     = get ("volume");
-
-    for (int i = 0; i < 16; ++i)
-        synth.addVoice (new PadVoice (bank, params));
-    synth.addSound (new PadSound());
+    factoryBank = WavetableBank::createFactory();
+    engine.init (apvts);
+    engine.setBank (0, factoryBank.get());
+    engine.setBank (1, factoryBank.get());
+    apvts.state.setProperty ("presetName", "Init Moos", nullptr);
 }
 
 bool MoosProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -87,7 +26,8 @@ bool MoosProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 void MoosProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    synth.setCurrentPlaybackSampleRate (sampleRate);
+    engine.prepare (sampleRate);
+    arp.prepare (sampleRate);
     keyboardState.reset();
 
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, 2 };
@@ -96,10 +36,13 @@ void MoosProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     chorus.setDepth (0.35f);
     chorus.setCentreDelay (9.0f);
     chorus.setFeedback (0.1f);
-    reverb.prepare (spec);
+
+    hpf.prepare (sampleRate);
+    delay.prepare (sampleRate);
+    reverb.prepare (sampleRate, samplesPerBlock);
 
     masterGain.reset (sampleRate, 0.05);
-    masterGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load()));
+    masterGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
 }
 
 void MoosProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -109,22 +52,36 @@ void MoosProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     buffer.clear();
 
     keyboardState.processNextMidiBuffer (midi, 0, n, true);
-    synth.renderNextBlock (buffer, midi, 0, n);
+
+    // Tempo / Transport vom Host
+    double bpm = 120.0, ppq = 0.0;
+    bool playing = false;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+        {
+            if (auto b = pos->getBpm()) bpm = *b;
+            if (auto p = pos->getPpqPosition()) ppq = *p;
+            playing = pos->getIsPlaying() && pos->getPpqPosition().hasValue();
+        }
+
+    Arpeggiator::Settings as { arpOn->load() > 0.5f, (int) arpMode->load(), (int) arpRate->load(),
+                               (int) std::round (arpOct->load()), arpGate->load(), bpm, playing, ppq };
+    arp.process (midi, arpMidi, n, as);
+
+    engine.process (buffer, arpMidi, n);
+
+    hpf.process (buffer, 0, n, hpfHz->load());
 
     juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::ProcessContextReplacing<float> ctx (block);
-
     chorus.setMix (chorusMix->load());
-    chorus.process (ctx);
+    chorus.process (juce::dsp::ProcessContextReplacing<float> (block));
 
-    juce::dsp::Reverb::Parameters rp;
-    rp.roomSize   = reverbSize->load();
-    rp.damping    = 0.45f;
-    rp.wetLevel   = reverbMix->load();
-    rp.dryLevel   = 1.0f - 0.5f * reverbMix->load();
-    rp.width      = 1.0f;
-    reverb.setParameters (rp);
-    reverb.process (ctx);
+    const float dTime = delaySync->load() > 0.5f
+                          ? (float) (MoosParams::delayDivBeats ((int) delayDiv->load()) * 60000.0 / bpm)
+                          : delayTime->load();
+    delay.process (buffer, 0, n, juce::jmin (dTime, 2000.0f), delayFb->load(), delayMix->load());
+
+    reverb.process (buffer, 0, n, reverbSize->load(), reverbMix->load(), shimmer->load());
 
     masterGain.setTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
     for (int i = 0; i < n; ++i)
@@ -133,14 +90,98 @@ void MoosProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
             auto* d = buffer.getWritePointer (ch);
-            d[i] = std::tanh (d[i] * g);       // sanfter Soft-Clip als Schutz vor Übersteuerung
+            d[i] = std::tanh (d[i] * g);       // sanfter Soft-Clip als Schutz
         }
+    }
+}
+
+//==============================================================================
+juce::String MoosProcessor::loadWavetable (int osc, const juce::File& file)
+{
+    juce::String error;
+    auto bank = WavetableBank::createFromFile (file, error);
+    if (bank == nullptr) return error.isEmpty() ? "Unbekannter Fehler" : error;
+
+    const juce::ScopedLock sl (bankLock);
+    engine.setBank (osc, bank.get());
+    loadedBanks.push_back (std::move (bank));
+    apvts.state.setProperty (osc == 0 ? "waveA" : "waveB", file.getFullPathName(), nullptr);
+    return {};
+}
+
+void MoosProcessor::resetWavetable (int osc)
+{
+    engine.setBank (osc, factoryBank.get());
+    apvts.state.removeProperty (osc == 0 ? "waveA" : "waveB", nullptr);
+}
+
+void MoosProcessor::restoreWavetables()
+{
+    for (int osc = 0; osc < 2; ++osc)
+    {
+        const auto path = apvts.state.getProperty (osc == 0 ? "waveA" : "waveB").toString();
+        if (path.isNotEmpty() && juce::File (path).existsAsFile())
+        {
+            if (loadWavetable (osc, juce::File (path)).isNotEmpty())
+                engine.setBank (osc, factoryBank.get());
+        }
+        else
+            engine.setBank (osc, factoryBank.get());
     }
 }
 
 juce::AudioProcessorEditor* MoosProcessor::createEditor()
 {
     return new MoosEditor (*this);
+}
+
+//==============================================================================
+int MoosProcessor::getNumPrograms() { return (int) MoosPresets::factory().size(); }
+
+const juce::String MoosProcessor::getProgramName (int i)
+{
+    const auto& f = MoosPresets::factory();
+    return juce::isPositiveAndBelow (i, (int) f.size()) ? juce::String (f[(size_t) i].name) : juce::String();
+}
+
+void MoosProcessor::setCurrentProgram (int i) { loadFactoryPreset (i); }
+
+void MoosProcessor::loadFactoryPreset (int index)
+{
+    const auto& f = MoosPresets::factory();
+    if (! juce::isPositiveAndBelow (index, (int) f.size())) return;
+    currentProgram = index;
+    MoosPresets::apply (apvts, f[(size_t) index]);
+    resetWavetable (0);
+    resetWavetable (1);
+    apvts.state.setProperty ("presetName", f[(size_t) index].name, nullptr);
+    ++presetChangeCounter;
+}
+
+juce::String MoosProcessor::loadUserPreset (const juce::File& file)
+{
+    auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+        return "Keine gültige MOOS-Preset-Datei";
+
+    // zuerst alles auf Standard, damit fehlende (ältere) Parameter definiert sind
+    MoosPresets::apply (apvts, MoosPresets::factory()[0]);
+    apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    apvts.state.setProperty ("presetName", file.getFileNameWithoutExtension(), nullptr);
+    restoreWavetables();
+    ++presetChangeCounter;
+    return {};
+}
+
+bool MoosProcessor::saveUserPreset (const juce::File& file)
+{
+    apvts.state.setProperty ("presetName", file.getFileNameWithoutExtension(), nullptr);
+    if (auto xml = apvts.copyState().createXml())
+    {
+        ++presetChangeCounter;
+        return xml->writeTo (file);
+    }
+    return false;
 }
 
 void MoosProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -153,7 +194,11 @@ void MoosProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
+        {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            restoreWavetables();
+            ++presetChangeCounter;
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
