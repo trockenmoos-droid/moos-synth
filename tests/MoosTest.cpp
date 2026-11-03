@@ -1,7 +1,7 @@
 // Offline-Test: spielt einen Akkord durch MOOS und schreibt render.wav
-#include "../Source/PluginProcessor.h"
-#include "../Source/PluginEditor.h"
-#include "../Source/MossBackground.h"
+#include "../plugins/moos/Source/PluginProcessor.h"
+#include "../plugins/moos/Source/PluginEditor.h"
+#include "../plugins/moos/Source/MossBackground.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
 int main (int argc, char** argv)

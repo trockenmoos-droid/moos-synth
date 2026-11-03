@@ -1,4 +1,4 @@
-name: Build MOOS (Windows VST3)
+name: Build trockenmoos audio plugins (Windows VST3)
 
 on:
   push:
@@ -16,14 +16,27 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Upload VST3
-        uses: actions/upload-artifact@v4
-        with:
-          name: MOOS-VST3-Windows
-          path: build/MOOS_artefacts/Release/VST3/
+      - name: Collect plugins
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/VST3, dist/Standalone | Out-Null
+          Get-ChildItem build/plugins -Recurse -Directory -Filter *.vst3 |
+            Where-Object { $_.FullName -match 'Release\\VST3' } |
+            ForEach-Object { Copy-Item $_.FullName -Destination dist/VST3 -Recurse }
+          Get-ChildItem build/plugins -Recurse -File -Filter *.exe |
+            Where-Object { $_.FullName -match 'Release\\Standalone' } |
+            ForEach-Object { Copy-Item $_.FullName -Destination dist/Standalone }
+          Copy-Item README.md dist/
+          Get-ChildItem dist -Recurse -Depth 1
 
-      - name: Upload Standalone
+      - name: Upload all plugins (VST3)
         uses: actions/upload-artifact@v4
         with:
-          name: MOOS-Standalone-Windows
-          path: build/MOOS_artefacts/Release/Standalone/MOOS.exe
+          name: trockenmoos-plugins-VST3-Windows
+          path: dist/VST3/
+
+      - name: Upload standalone apps
+        uses: actions/upload-artifact@v4
+        with:
+          name: trockenmoos-plugins-Standalone-Windows
+          path: dist/Standalone/
