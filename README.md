@@ -90,5 +90,6 @@ Offline-Tests (Stabilität, Presets, Hörproben, Screenshots): `-DTM_BUILD_TESTS
 - `tests/` – Offline-Tests
 
 ## Lizenz
-Noch offen (geplant: frei / Spende). JUCE wird unter AGPLv3 oder kommerzieller Lizenz angeboten – vor einer
-öffentlichen Veröffentlichung klären.
+Die Plugins sind und bleiben gratis (keine Bezahlversion, keine Spenden-Einnahmen).
+Gebaut mit JUCE 8 unter der kostenlosen Starter-Lizenz (laut JUCE-EULA bis 20.000 USD Jahresumsatz/Förderung,
+ohne Pflicht zu offenem Quellcode oder Logo) – vor Veröffentlichung in der aktuellen EULA auf juce.com prüfen.
