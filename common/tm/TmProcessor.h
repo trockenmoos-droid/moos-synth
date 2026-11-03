@@ -133,6 +133,25 @@ namespace tmk
         juce::SharedResourcePointer<tex::Service> textures;   // Textur-Erzeugung lebt so lange wie das Plugin
     };
 
+    // Kleiner Oszilloskop-Puffer: Audio-Thread schreibt, GUI liest (für die Anzeige reicht das ohne Sperren)
+    struct Scope
+    {
+        static constexpr int size = 4096;
+        float data[size] {};
+        std::atomic<int> write { 0 };
+        void push (const float* l, const float* r, int n) noexcept
+        {
+            int w = write.load();
+            for (int i = 0; i < n; ++i) { data[w] = 0.5f * (l[i] + r[i]); w = (w + 1) & (size - 1); }
+            write = w;
+        }
+        void copyLast (float* dest, int n) const noexcept
+        {
+            int r = (write.load() - n + size) & (size - 1);
+            for (int i = 0; i < n; ++i) { dest[i] = data[r]; r = (r + 1) & (size - 1); }
+        }
+    };
+
     inline juce::NormalisableRange<float> skewed (float lo, float hi, float centre)
     {
         juce::NormalisableRange<float> r (lo, hi);

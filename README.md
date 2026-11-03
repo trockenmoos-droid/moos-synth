@@ -11,6 +11,11 @@ C++ / JUCE 8. Von trockenmoos.
 | **DACHSTEIN** | Synth | Gletscher-Drone: additive, dehnbare Obertöne, Fels, Wind, Eisknistern, Hall |
 | **SARSTEIN** | Verzerrer | 4 Gesteine (Kalk, Granit, Fels, Bergkristall), Geröll, Steinschlag, 4x Oversampling, Auto-Pegel |
 | **5 FINGERS** | Granular-Delay | 5 Abgriffe wie die Plattform am Krippenstein, jeder mit Körnung → Granular-Wolke (Tonhöhe, Rückwärts) |
+| **SANKT WOLFGANG** | Synth | Kirchenglocke (Hum, Prim, Terz, Quint, Nominal … schwebend) + Pfeifenorgel (7 Register, Chiff, Tremulant) |
+| **LANDFRIEDALM** | Synth | Zither & Hackbrett (Saitenmodell), Kuhglocke, Jodler mit Registersprung; Echo vom Berg |
+| **KELTEN** | Synth | Carnyx-Kriegshorn (Growl, rasselnde Zunge), Bordun (Grundton + Quinte), Eisenzeit-Lo-Fi |
+| **RÖMER** | Synth | Hydraulis (Wasserorgel mit schwankendem Druck und Blubbern) + Cornu; Villa, Therme, Arena |
+| **GOISERER PASCHER** | Rhythmus | Gate + Klatscher-Gruppe im 16er-Raster, Dreivierteltakt-Muster, Swing, Mensch, Schmuggel |
 
 ## HALLSTATT
 Frühe Reflexionen je Raum (Flatterecho im Stollen, Felswand-Echos über dem See …) + 8-Kanal-Feedback-Delay-Netzwerk
@@ -39,10 +44,33 @@ Gemeinsame Länge (frei oder im Songtempo); je Finger Zeit (Anteil der Länge), 
 Körner: Größe (10–400 ms), Tonhöhe (±12 Halbtöne), Streuung, Dichte, Rückwärts. Feedback vom längsten Finger –
 mit Tonhöhe +12 entsteht ein Shimmer-Delay.
 
+## SANKT WOLFGANG
+Glocke: 9 Teiltöne einer Kirchenglocke als schwebende Paare mit eigenen Abklingzeiten; Terz Moll/Dur, Material
+(Unharmonie), Schwebung, Anschlag, Dämpfen. Orgel: 16', 8', 4', 2 2/3', 2', 1 3/5', Mixtur, Chiff, Wind, Tremulant.
+Mod Wheel = Schwellwerk, Aftertouch = Tremulant. Kirchenhall.
+
+## LANDFRIEDALM
+Zither (gezupft, Zupfposition = Anschlag), Hackbrett (Doppelsaiten, Hammer), Kuhglocke (unharmonische Teiltöne,
+Klappern), Jodler (Formant-Stimme a-o-u-e-i, Brust- → Kopfstimme mit Jodelsprung, Vibrato). Holzkörper, Echo vom Berg.
+
+## KELTEN
+Carnyx: Blechblas-Stimme, deren Helligkeit mit der Lautstärke wächst; Growl, Zunge (Rasseln), Anblasen (von unten in
+den Ton). Bordun auf wählbarem Ton + Quinte, setzt beim Spielen ein. Eisenzeit: Erde (Rumpeln, Knistern), Rost
+(Bits/Rate), Alter (Bandbreite, Leiern).
+
+## RÖMER
+Hydraulis: 1–3 Pfeifenreihen, Wasserdruck lässt Lautstärke und Stimmung schwanken, Blubbern im Kessel, Luft.
+Cornu: rundes Bronzehorn. Ort: Villa, Therme, Arena.
+
+## GOISERER PASCHER
+Zwei Reihen à 16 Schritte (Gate, Klatschen) im Takt der DAW; Raster 1/8 bis 1/32, Länge 2–16 (12 = zwei
+Dreivierteltakte), Swing, Schmuggel (Schläge fallen weg oder kommen dazu). Gate: Tiefe, Glätten, Mix.
+Klatscher: Anzahl (1–6), Mensch (Timing-Streuung), Hände (Klangfarbe), Wirtshaus (Raum).
+
 ## Gemeinsam
 - Werkspresets + eigene Presets (*SPEICHERN* → `Dokumente\trockenmoos\<PLUGIN> Presets`)
 - Hintergrund (*HINTERGRUND*): jede Landschaft der Serie in jedem Plugin (Moos, Hallstättersee am Abend, Holzrohr mit Salz,
-  Gletscher, Kalkwand, Wolkenmeer vom Krippenstein) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
+  Gletscher, Kalkwand, Wolkenmeer, Glasfenster, Almwiese, keltische Bronze, römisches Mosaik, Hirschleder) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
 - Frei skalierbare Oberfläche
 
 ## Installation (Windows)

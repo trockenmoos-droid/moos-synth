@@ -68,7 +68,7 @@ function(tm_add_plugin target product code is_synth version)
             juce::juce_recommended_warning_flags)
 endfunction()
 
-set(TM_PLUGINS moos hallstatt soleleitung dachstein sarstein 5fingers)
+set(TM_PLUGINS moos hallstatt soleleitung dachstein sarstein 5fingers sanktwolfgang landfriedalm kelten roemer pascher)
 foreach(p ${TM_PLUGINS})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/plugins/${p}/Source/PluginProcessor.cpp)
         add_subdirectory(plugins/${p})

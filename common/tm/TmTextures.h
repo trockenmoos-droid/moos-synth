@@ -640,6 +640,352 @@ namespace tmk::tex
     }
 
     //==========================================================================
+    // SANKT WOLFGANG: gotisches Glasfenster mit Bleiruten, Steinpfosten und Spitzbögen
+    inline juce::Image stainedGlass()
+    {
+        RGB px;
+        const juce::Colour palette[] = { juce::Colour (0xff1d3f9e), juce::Colour (0xff9e1b2a), juce::Colour (0xffd9a52a),
+                                         juce::Colour (0xff1f7a4a), juce::Colour (0xff5b2a86), juce::Colour (0xff2a6fb8),
+                                         juce::Colour (0xffc75a1a), juce::Colour (0xffe8dcb0) };
+        const int lancets = 5;
+        const float lw = (float) W / lancets, mull = 26.0f, cell = 62.0f;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const int li = juce::jlimit (0, lancets - 1, (int) (fx / lw));
+                const float lx = fx - li * lw;                         // Position im Fensterfeld
+                const float cx = lw * 0.5f;
+                // Spitzbogen oben: zwei Kreisbögen
+                const float archTop = 60.0f, archH = lw * 0.9f;
+                bool stone = lx < mull * 0.5f || lx > lw - mull * 0.5f;
+                if (fy < archTop + archH)
+                {
+                    const float r = lw - mull;
+                    const float dl = std::hypot (lx - (mull * 0.5f), fy - (archTop + archH));
+                    const float dr = std::hypot (lx - (lw - mull * 0.5f), fy - (archTop + archH));
+                    if (dl > r || dr > r) stone = true;
+                }
+                if (fy < archTop) stone = true;
+                // Querstangen aus Eisen
+                const bool bar = std::fmod (fy - archTop, 240.0f) < 7.0f && fy > archTop + archH;
+
+                juce::Colour c;
+                if (stone)
+                {
+                    const float n = fbm (fx / 40.0f, fy / 40.0f, 4, 3);
+                    c = juce::Colour (0xff3a352e).interpolatedWith (juce::Colour (0xff6d665a), n);
+                    if (std::fmod (fy, 90.0f) < 2.5f) c = c.withMultipliedBrightness (0.6f);   // Steinfugen
+                }
+                else if (bar) c = juce::Colour (0xff141414);
+                else
+                {
+                    // Glasstücke: Voronoi, Bleiruten an den Kanten
+                    const int gx = (int) std::floor (fx / cell), gy = (int) std::floor (fy / cell);
+                    float d1 = 1e9f, d2 = 1e9f; int best = 0;
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx)
+                        {
+                            const float px_ = (gx + dx + 0.15f + 0.7f * hash (gx + dx, gy + dy, 1)) * cell;
+                            const float py_ = (gy + dy + 0.15f + 0.7f * hash (gx + dx, gy + dy, 2)) * cell;
+                            const float d = std::hypot (fx - px_, fy - py_);
+                            if (d < d1) { d2 = d1; d1 = d; best = (int) (hash (gx + dx, gy + dy, 3) * 8.0f); }
+                            else if (d < d2) d2 = d;
+                        }
+                    if (d2 - d1 < 4.0f) c = juce::Colour (0xff121212);
+                    else
+                    {
+                        // Licht fällt von hinten: Mitte heller, Glas mit Schlieren
+                        const float glow = 1.0f - 0.55f * juce::jlimit (0.0f, 1.0f, std::hypot ((fx - W * 0.5f) / W, (fy - H * 0.45f) / H) * 1.6f);
+                        const float streak = 0.85f + 0.3f * fbm (fx / 12.0f, fy / 70.0f, 3, best + 11);
+                        c = palette[juce::jlimit (0, 7, best)].withMultipliedBrightness (glow * streak * (0.9f + 0.25f * (lx > cx ? 0.1f : 0.0f)));
+                        if (d2 - d1 < 7.0f) c = c.withMultipliedBrightness (0.75f);
+                    }
+                }
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        {
+            juce::Graphics g (img);
+            juce::ColourGradient rays (juce::Colour (0x30fff1c8), W * 0.5f, H * 0.35f, juce::Colour (0x00fff1c8), W * 0.5f, H * 1.1f, true);
+            g.setGradientFill (rays);
+            g.fillAll();
+        }
+        vignette (img, 0.55f);
+        return img;
+    }
+
+    //==========================================================================
+    // LANDFRIEDALM: Almwiese mit Blumen, Hütte, Bergkulisse, Sommerhimmel
+    inline juce::Image almMeadow()
+    {
+        RGB px;
+        const int skyEnd = (int) (H * 0.36f);
+        std::vector<float> ridge ((size_t) W), hill ((size_t) W);
+        for (int x = 0; x < W; ++x)
+        {
+            float r = fbm (x / 260.0f, 0.5f, 5, 7); r = 1.0f - std::abs (r * 2.0f - 1.0f);
+            ridge[(size_t) x] = skyEnd + 40.0f - 260.0f * r;
+            hill[(size_t) x]  = H * 0.47f - 80.0f * fbm (x / 500.0f, 2.0f, 3, 8);
+        }
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const float t = fy / skyEnd;
+                juce::Colour c = juce::Colour (0xff3d7ccc).interpolatedWith (juce::Colour (0xffb9d9f2), juce::jlimit (0.0f, 1.0f, t));
+                const float cl = fbm (fx / 260.0f, fy / 70.0f, 5, 3);
+                c = c.interpolatedWith (juce::Colours::white, juce::jlimit (0.0f, 0.9f, (cl - 0.55f) * 3.0f));
+                if (fy >= ridge[(size_t) x])       // Felsberge mit Schnee
+                {
+                    const float sn = juce::jlimit (0.0f, 1.0f, (fbm (fx / 12.0f, fy / 40.0f, 3, 9) - 0.45f) * 3.0f) * juce::jlimit (0.0f, 1.0f, 1.0f - (fy - ridge[(size_t) x]) / 120.0f);
+                    c = juce::Colour (0xff7d8597).interpolatedWith (juce::Colour (0xff9aa0ad), fbm (fx / 30.0f, fy / 30.0f, 3, 10)).interpolatedWith (juce::Colours::white, sn);
+                    c = c.interpolatedWith (juce::Colour (0xffb9d9f2), 0.25f);                     // Luftperspektive
+                }
+                if (fy >= hill[(size_t) x])        // Almhänge
+                {
+                    const float d = (fy - hill[(size_t) x]) / (H - hill[(size_t) x]);
+                    c = juce::Colour (0xff5f8f2c).interpolatedWith (juce::Colour (0xff3d6e1d), d + 0.3f * (fbm (fx / 80.0f, fy / 40.0f, 4, 11) - 0.5f));
+                    c = c.withMultipliedBrightness (0.9f + 0.25f * fbm (fx / 8.0f, fy / 4.0f, 3, 12));
+                }
+                px.set (x, y, c);
+            }
+
+        juce::Random rng (1873);
+        // Almhütte
+        {
+            const int hx = (int) (W * 0.18f), hy = (int) (hill[(size_t) (W * 0.18f)] + 30);
+            for (int y = hy - 70; y < hy; ++y) for (int x = hx; x < hx + 120; ++x)
+                px.blend (x, y, 0.38f + 0.06f * ((y / 7) % 2), 0.24f, 0.13f, 0.97f);                  // Holzbalken
+            for (int k = 0; k < 50; ++k) for (int x = hx - 14 + k; x < hx + 134 - k; ++x)
+                px.blend (x, hy - 70 - k, 0.22f, 0.2f, 0.2f, 0.97f);                                   // Dach
+            for (int y = hy - 45; y < hy - 25; ++y) for (int x = hx + 22; x < hx + 40; ++x) px.blend (x, y, 0.95f, 0.9f, 0.7f, 0.9f);
+        }
+        // Grashalme und Blumen, vorne größer
+        for (int i = 0; i < 220000; ++i)
+        {
+            const int x = rng.nextInt (W);
+            const float yy = H * 0.45f + std::pow (rng.nextFloat(), 0.7f) * H * 0.56f;
+            const int y = (int) yy;
+            if (y < hill[(size_t) x] || y >= H) continue;
+            const float persp = (yy - H * 0.45f) / (H * 0.55f);
+            const float len = 3.0f + 22.0f * persp * (0.5f + rng.nextFloat());
+            const float lean = (rng.nextFloat() - 0.5f) * 0.6f;
+            const float g = 0.35f + 0.3f * rng.nextFloat();
+            for (float k = 0; k < len; k += 1.0f)
+                px.blend ((int) (x + lean * k), (int) (y - k), 0.25f * g + 0.1f, 0.5f * g + 0.25f, 0.12f, 0.7f);
+        }
+        const float flower[][3] = { { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.86f, 0.2f }, { 0.62f, 0.38f, 0.85f }, { 0.9f, 0.25f, 0.3f }, { 0.35f, 0.55f, 0.95f } };
+        for (int i = 0; i < 9000; ++i)
+        {
+            const int x = rng.nextInt (W);
+            const float yy = H * 0.5f + std::pow (rng.nextFloat(), 0.8f) * H * 0.5f;
+            if (yy < hill[(size_t) x] + 10) continue;
+            const float persp = (yy - H * 0.5f) / (H * 0.5f);
+            const int r = 1 + (int) (persp * 5.0f);
+            const auto& c = flower[rng.nextInt (5)];
+            for (int dy = -r; dy <= r; ++dy) for (int dx = -r; dx <= r; ++dx)
+                if (dx * dx + dy * dy <= r * r) px.blend (x + dx, (int) yy + dy, c[0], c[1], c[2], 0.9f);
+            px.blend (x, (int) yy, 1.0f, 0.85f, 0.2f, 0.9f);
+        }
+        auto img = px.toImage();
+        vignette (img, 0.45f);
+        return img;
+    }
+
+    //==========================================================================
+    // KELTEN: Bronzeblech mit Patina, getriebene Spiralen (Triskelen), Punktbordüre
+    inline juce::Image celticBronze()
+    {
+        RGB px;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const float n = fbm (fx / 120.0f, fy / 120.0f, 5, 4);
+                const float brushed = fbm (fx / 2.0f, fy / 60.0f, 2, 5);
+                juce::Colour c = juce::Colour (0xff5a3a1a).interpolatedWith (juce::Colour (0xffc08a3e), n * 0.8f + brushed * 0.25f);
+                const float pat = fbm (fx / 70.0f, fy / 70.0f, 5, 6);
+                if (pat > 0.55f) c = c.interpolatedWith (juce::Colour (0xff3f8f7a), juce::jlimit (0.0f, 0.85f, (pat - 0.55f) * 4.0f));
+                const float rust = fbm (fx / 25.0f, fy / 25.0f, 4, 7);
+                if (rust > 0.68f) c = c.interpolatedWith (juce::Colour (0xff6e2d14), juce::jlimit (0.0f, 0.7f, (rust - 0.68f) * 5.0f));
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        {
+            juce::Graphics g (img);
+            // getriebene Triskelen: drei Spiralarme um ein Zentrum; Licht von oben links (hell oben, dunkel unten versetzt)
+            auto triskele = [&] (float cx, float cy, float rad, float rot)
+            {
+                juce::Path p;
+                for (int arm = 0; arm < 3; ++arm)
+                {
+                    const float a0 = rot + arm * juce::MathConstants<float>::twoPi / 3.0f;
+                    for (int i = 0; i <= 160; ++i)
+                    {
+                        const float t = i / 160.0f;
+                        const float r = rad * (0.08f + 0.92f * t);
+                        const float a = a0 + t * juce::MathConstants<float>::twoPi * 1.6f;
+                        const float x = cx + std::cos (a) * r * 0.55f + std::cos (a0) * rad * 0.45f * t;
+                        const float y = cy + std::sin (a) * r * 0.55f + std::sin (a0) * rad * 0.45f * t;
+                        i == 0 ? p.startNewSubPath (x, y) : p.lineTo (x, y);
+                    }
+                }
+                g.setColour (juce::Colour (0x90000000));
+                g.strokePath (p, juce::PathStrokeType (7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded), juce::AffineTransform::translation (3, 4));
+                g.setColour (juce::Colour (0xc0f0c070));
+                g.strokePath (p, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setColour (juce::Colour (0x60fff2c0));
+                g.strokePath (p, juce::PathStrokeType (1.5f), juce::AffineTransform::translation (-1, -1.5f));
+            };
+            triskele (W * 0.22f, H * 0.32f, 250.0f, 0.3f);
+            triskele (W * 0.72f, H * 0.62f, 320.0f, 1.4f);
+            triskele (W * 0.47f, H * 0.9f, 160.0f, 2.2f);
+            triskele (W * 0.9f, H * 0.15f, 140.0f, 0.9f);
+            // Punktbordüre
+            for (float x = 40; x < W - 30; x += 34)
+                for (float y : { 34.0f, (float) H - 34.0f })
+                {
+                    g.setColour (juce::Colour (0x90000000)); g.fillEllipse (x + 2, y + 3, 12, 12);
+                    g.setColour (juce::Colour (0xd0e8b868)); g.fillEllipse (x, y, 12, 12);
+                }
+        }
+        vignette (img, 0.6f);
+        return img;
+    }
+
+    //==========================================================================
+    // RÖMER: Bodenmosaik aus Steinchen – Mäanderbordüre und Rosetten
+    inline juce::Image romanMosaic()
+    {
+        juce::Image img (juce::Image::RGB, W, H, true);
+        juce::Graphics g (img);
+        g.fillAll (juce::Colour (0xff4a443c));                       // Mörtel
+        const float t = 15.0f;                                       // Steinchengröße
+        const int tw = (int) (W / t) + 1, th = (int) (H / t) + 1;
+        const juce::Colour cream (0xffe6dcc4), terra (0xffa4442a), black (0xff23201c), ochre (0xffc99a3c), slate (0xff5f6f7a);
+        // Mäander-Motiv (10 x 10 Steinchen), 1 = dunkel
+        static const char* meander[10] = { "1111111111", "1000000001", "1011111101", "1010000101", "1010110101",
+                                           "1010100101", "1010111101", "1010000001", "1011111111", "0000000000" };
+        juce::Random rng (79);
+        for (int j = 0; j < th; ++j)
+            for (int i = 0; i < tw; ++i)
+            {
+                juce::Colour c = cream;
+                const int border = 11;
+                const bool inBorder = i < border || j < border || i >= tw - border || j >= th - border;
+                if (inBorder)
+                {
+                    const int ii = (j < border || j >= th - border) ? i : j;     // entlang der Kante laufen
+                    const int jj = (j < border) ? j : (j >= th - border ? th - 1 - j : (i < border ? i : tw - 1 - i));
+                    if (jj == 0 || jj == border - 1) c = black;
+                    else c = meander[juce::jlimit (0, 9, jj - 1)][ii % 10] == '1' ? black : cream;
+                }
+                else
+                {
+                    // Rosetten auf einem Raster
+                    const float sp = 22.0f;
+                    const float cx = std::round ((i - border) / sp) * sp + border, cy = std::round ((j - border) / sp) * sp + border;
+                    const float d = std::hypot (i - cx, j - cy);
+                    const float ang = std::atan2 (j - cy, i - cx);
+                    if (d < 2.2f) c = ochre;
+                    else if (d < 5.5f) c = (std::fmod (ang + 7.0f, 0.785f) < 0.39f) ? terra : ochre;
+                    else if (d < 7.0f) c = black;
+                    else if (d < 8.2f) c = slate;
+                    // diagonale Flechtbänder zwischen den Rosetten
+                    const int di = (i - border) % 22, dj = (j - border) % 22;
+                    if (d > 9.0f && (std::abs (di - dj) < 1 || std::abs (di + dj - 22) < 1)) c = terra;
+                }
+                // jedes Steinchen leicht anders
+                const float v = 0.85f + 0.3f * rng.nextFloat();
+                c = c.withMultipliedBrightness (v).withRotatedHue ((rng.nextFloat() - 0.5f) * 0.02f);
+                const float jx = (rng.nextFloat() - 0.5f) * 2.5f, jy = (rng.nextFloat() - 0.5f) * 2.5f;
+                const float inset = 1.6f + rng.nextFloat() * 1.2f;
+                auto r = juce::Rectangle<float> (i * t + inset + jx, j * t + inset + jy, t - 2 * inset, t - 2 * inset);
+                g.setColour (c);
+                g.fillRoundedRectangle (r, 2.0f);
+                g.setColour (juce::Colour (0x18ffffff));
+                g.drawLine (r.getX() + 1, r.getY() + 1, r.getRight() - 1, r.getY() + 1, 1.0f);
+            }
+        juce::ColourGradient wear (juce::Colour (0x00000000), W * 0.5f, H * 0.5f, juce::Colour (0x50000000), 0, 0, true);
+        g.setGradientFill (wear);
+        g.fillAll();
+        vignette (img, 0.45f);
+        return img;
+    }
+
+    //==========================================================================
+    // GOISERER PASCHER: Hirschleder mit Ziernaht und grüner Stickerei
+    inline juce::Image leather()
+    {
+        RGB px;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const float n = fbm (fx / 150.0f, fy / 150.0f, 5, 3);
+                // Narbung: kleine Zellen
+                const float cellN = fbm (fx / 4.0f, fy / 4.0f, 2, 4);
+                const float crease = std::abs (fbm (fx / 90.0f, fy / 260.0f, 4, 5) - 0.5f);
+                juce::Colour c = juce::Colour (0xff3b2414).interpolatedWith (juce::Colour (0xff8a5a32), n * 0.9f + cellN * 0.2f);
+                if (crease < 0.02f) c = c.withMultipliedBrightness (0.7f + 15.0f * crease);
+                // abgegriffene, hellere Stellen
+                c = c.interpolatedWith (juce::Colour (0xffa87a4c), juce::jlimit (0.0f, 0.4f, (fbm (fx / 300.0f, fy / 300.0f, 3, 6) - 0.6f) * 2.0f));
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        {
+            juce::Graphics g (img);
+            // Ziernaht (doppelt) rundherum
+            for (float inset : { 46.0f, 62.0f })
+            {
+                juce::Path seam;
+                seam.addRoundedRectangle (inset, inset, W - 2 * inset, H - 2 * inset, 30.0f);
+                juce::Path dashed;
+                const float dashes[] = { 12.0f, 8.0f };
+                juce::PathStrokeType (3.0f).createDashedStroke (dashed, seam, dashes, 2);
+                g.setColour (juce::Colour (0x80000000)); g.fillPath (dashed, juce::AffineTransform::translation (1.5f, 2.0f));
+                g.setColour (juce::Colour (0xffe8d6a8)); g.fillPath (dashed);
+            }
+            // grüne Stickerei: Ranken mit Blättern in den Ecken
+            auto vine = [&] (float cx, float cy, float s, float rot)
+            {
+                juce::Path stem;
+                for (int i = 0; i <= 60; ++i)
+                {
+                    const float t = i / 60.0f;
+                    const float a = rot + t * 4.0f;
+                    const float r = s * (1.0f - t * 0.7f);
+                    const float x = cx + std::cos (a) * r * t * 1.2f, y = cy + std::sin (a) * r * t * 1.2f;
+                    i == 0 ? stem.startNewSubPath (x, y) : stem.lineTo (x, y);
+                    if (i % 12 == 6)
+                    {
+                        juce::Path leaf;
+                        leaf.addEllipse (-12, -4, 24, 8);
+                        g.setColour (juce::Colour (0xff3f7a3a));
+                        g.fillPath (leaf, juce::AffineTransform::rotation (a + 0.8f).translated (x, y));
+                    }
+                }
+                g.setColour (juce::Colour (0xff2f6a2c));
+                g.strokePath (stem, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setColour (juce::Colour (0xffeef0e6));                   // kleine weiße Blüte (Edelweiß-artig)
+                for (int k = 0; k < 8; ++k)
+                {
+                    juce::Path petal; petal.addEllipse (-3, -11, 6, 12);
+                    g.fillPath (petal, juce::AffineTransform::rotation (k * juce::MathConstants<float>::pi / 4.0f).translated (cx, cy));
+                }
+                g.setColour (juce::Colour (0xffd8c060)); g.fillEllipse (cx - 4, cy - 4, 8, 8);
+            };
+            vine (150, 150, 140, 0.0f);
+            vine ((float) W - 150, 150, 140, 1.6f);
+            vine (150, (float) H - 150, 140, -1.6f);
+            vine ((float) W - 150, (float) H - 150, 140, 3.1f);
+        }
+        vignette (img, 0.55f);
+        return img;
+    }
+
+    //==========================================================================
     // Alle Landschaften der Serie – in jedem Plugin wählbar
     struct Landscape { const char* key; const char* label; std::function<juce::Image()> make; };
     inline const std::vector<Landscape>& landscapes()
@@ -651,6 +997,11 @@ namespace tmk::tex
             { "dachstein",   "Gletscher (DACHSTEIN)",                    [] { return glacierIce(); } },
             { "sarstein",    "Kalkwand (SARSTEIN)",                      [] { return limestone(); } },
             { "5fingers",    "Wolkenmeer vom Krippenstein (5 FINGERS)",  [] { return cloudSea(); } },
+            { "sanktwolfgang", "Glasfenster (SANKT WOLFGANG)",           [] { return stainedGlass(); } },
+            { "landfriedalm",  "Almwiese (LANDFRIEDALM)",                [] { return almMeadow(); } },
+            { "kelten",        "Keltische Bronze (KELTEN)",              [] { return celticBronze(); } },
+            { "roemer",        "RÃ¶misches Mosaik (RÃMER)",  [] { return romanMosaic(); } },
+            { "pascher",       "Hirschleder (GOISERER PASCHER)",         [] { return leather(); } },
         };
         return l;
     }

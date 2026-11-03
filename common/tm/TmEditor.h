@@ -7,6 +7,65 @@
 
 namespace tmk
 {
+    // Oszilloskop als Bergsilhouette (mit Spiegelung) – für Synths, die keine eigene Anzeige brauchen
+    class ScopeView : public juce::Component, private juce::Timer
+    {
+    public:
+        ScopeView (const Scope& s, const Theme& t, juce::String titleText, std::function<juce::String()> infoFn = {})
+            : scope (s), theme (t), title (std::move (titleText)), info (std::move (infoFn)) { startTimerHz (30); }
+        ~ScopeView() override { stopTimer(); }
+
+        void paint (juce::Graphics& g) override
+        {
+            auto r = getLocalBounds().toFloat();
+            g.setColour (juce::Colour (0x50000000));
+            g.fillRoundedRectangle (r, 6.0f);
+            auto area = r.reduced (12.0f, 24.0f).withTrimmedTop (4.0f);
+
+            float buf[1024];
+            scope.copyLast (buf, 1024);
+            // auf einen steigenden Nulldurchgang ausrichten, damit die Welle steht
+            int start = 0;
+            for (int i = 1; i < 512; ++i) if (buf[i - 1] < 0.0f && buf[i] >= 0.0f) { start = i; break; }
+            float peak = 0.02f;
+            for (int i = 0; i < 512; ++i) peak = juce::jmax (peak, std::abs (buf[start + i]));
+            const float scale = 0.9f / juce::jmax (0.15f, peak);
+
+            juce::Path wave, fill;
+            const float mid = area.getCentreY();
+            for (int i = 0; i < 512; ++i)
+            {
+                const float x = area.getX() + area.getWidth() * i / 511.0f;
+                const float y = mid - buf[start + i] * scale * area.getHeight() * 0.45f;
+                if (i == 0) { wave.startNewSubPath (x, y); fill.startNewSubPath (x, area.getBottom()); }
+                wave.lineTo (x, y); fill.lineTo (x, y);
+            }
+            fill.lineTo (area.getRight(), area.getBottom());
+            fill.closeSubPath();
+            g.setGradientFill (juce::ColourGradient (theme.accent.withAlpha (0.35f), 0, area.getY(), theme.accent.withAlpha (0.02f), 0, area.getBottom(), false));
+            g.fillPath (fill);
+            g.setColour (theme.accent);
+            g.strokePath (wave, juce::PathStrokeType (2.0f));
+
+            g.setColour (theme.text);
+            g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+            g.drawText (title, r.reduced (12.0f, 6.0f), juce::Justification::topLeft);
+            if (info)
+            {
+                g.setColour (theme.dim);
+                g.setFont (juce::FontOptions (11.0f));
+                g.drawText (info(), r.reduced (12.0f, 6.0f), juce::Justification::topRight);
+            }
+        }
+
+    private:
+        void timerCallback() override { repaint(); }
+        const Scope& scope;
+        Theme theme;
+        juce::String title;
+        std::function<juce::String()> info;
+    };
+
     // Gemeinsames Editor-Gerüst: Kopfzeile mit Presets und Hintergrund-Menü, Milchglas-Panels,
     // Regler-Helfer, Seiten, optionale Tastatur. Alles liegt in "content" (feste Grundgröße)
     // und wird als Ganzes skaliert.
@@ -295,7 +354,8 @@ namespace tmk
             layoutBody (r);
         }
 
-        int titleWidth() const { return 70 + cfg.title.length() * 20; }
+        int titleTextWidth() const { return juce::jmax (110, cfg.title.length() * 20 + 16); }
+        int titleWidth() const { return titleTextWidth() + 130; }
 
         void paintContent (juce::Graphics& g)
         {
@@ -309,7 +369,7 @@ namespace tmk
 
             g.setColour (cfg.theme.accent);
             g.setFont (juce::FontOptions (28.0f, juce::Font::bold));
-            const int tw = titleWidth() - 100;
+            const int tw = titleTextWidth();
             g.drawText (cfg.title, 18, 10, tw, 40, juce::Justification::centredLeft);
             g.setColour (cfg.theme.text.withAlpha (0.7f));
             g.setFont (juce::FontOptions (10.5f));
