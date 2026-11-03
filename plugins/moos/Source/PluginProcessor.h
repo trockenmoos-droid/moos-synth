@@ -21,6 +21,7 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using juce::AudioProcessor::processBlock;
+    static constexpr int maxChunk = 2048;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -80,6 +81,8 @@ private:
     AF arpOn{}, arpMode{}, arpRate{}, arpOct{}, arpGate{};
 
     void restoreWavetables();
+    void processChunk (juce::AudioBuffer<float>&, juce::MidiBuffer&, int chunkOffset);
+    std::atomic<bool> needsReset { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MoosProcessor)
 };

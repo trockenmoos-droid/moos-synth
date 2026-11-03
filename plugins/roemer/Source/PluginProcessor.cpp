@@ -60,14 +60,14 @@ void RoemerProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     voices.reset();
     keyboardState.reset();
     reverb.prepare (sampleRate);
-    wet.setSize (2, samplesPerBlock);
+    wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     for (auto& b : bubbles) b.reset();
     press = pressTarget = 0.0f; act = 0.0f;
     gainSm.reset (sampleRate, 0.05);
     gainSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
 }
 
-void RoemerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+void RoemerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

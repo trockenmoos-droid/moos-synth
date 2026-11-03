@@ -97,8 +97,8 @@ void PascherProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     freePpq = 0.0; lastStep = -1; gateGain = 1.0f;
     for (auto& c : claps) c.active = false;
     reverb.prepare (sr);
-    clapBuf.setSize (2, samplesPerBlock);
-    wet.setSize (2, samplesPerBlock);
+    clapBuf.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
+    wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     mixSm.reset (sr, 0.05);
     mixSm.setCurrentAndTargetValue (mix->load());
 }
@@ -126,7 +126,7 @@ void PascherProcessor::triggerClaps (int offset, float accent)
             }
 }
 
-void PascherProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void PascherProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
@@ -145,6 +145,7 @@ void PascherProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
             if (pos->getIsPlaying() && pos->getPpqPosition().hasValue()) { ppq = *pos->getPpqPosition(); playing = true; }
         }
     const double beatsPerSample = bpm / 60.0 / sr;
+    if (playing) ppq += chunkOffset * beatsPerSample;     // bei aufgeteilten DAW-Blöcken weiterzählen
     const double stepLen = rateBeats ((int) rate->load());
     const int len = juce::jlimit (2, numSteps, (int) std::round (laenge->load()));
     const float sw = swing->load();

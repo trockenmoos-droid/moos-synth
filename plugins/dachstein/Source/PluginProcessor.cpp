@@ -81,7 +81,7 @@ void DachsteinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     for (auto& v : voices) { v.active = false; v.env.setSampleRate (sr); }
     keyboardState.reset();
     reverb.prepare (sr);
-    wet.setSize (2, samplesPerBlock);
+    wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     gainSm.reset (sr, 0.05);
     gainSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
     windLp = gust = gustTarget = act = 0.0f;
@@ -286,7 +286,7 @@ void DachsteinProcessor::renderAmbience (float* L, float* R, int start, int n)
     }
 }
 
-void DachsteinProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+void DachsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

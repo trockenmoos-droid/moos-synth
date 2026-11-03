@@ -57,10 +57,10 @@ void SarsteinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate;
     oversampling = std::make_unique<juce::dsp::Oversampling<float>> (2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false);
-    oversampling->initProcessing ((size_t) samplesPerBlock);
+    oversampling->initProcessing ((size_t) juce::jmax (samplesPerBlock, maxChunk));
     setLatencySamples ((int) std::round (oversampling->getLatencyInSamples()));
-    dry.setSize (2, samplesPerBlock);
-    driveCurve.assign ((size_t) samplesPerBlock, 1.0f);
+    dry.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
+    driveCurve.assign ((size_t) juce::jmax (samplesPerBlock, maxChunk), 1.0f);
     for (auto& r : dryRing) r.assign (256, 0.0f);
     dryW = 0;
     for (int c = 0; c < 2; ++c) hp1[c] = hp2[c] = dc[c] = dcIn[c] = lp[c] = tiltLp[c] = hold[c] = 0.0f;
@@ -70,7 +70,7 @@ void SarsteinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     mixSm.reset (sr, 0.03);   mixSm.setCurrentAndTargetValue (mix->load());
 }
 
-void SarsteinProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void SarsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

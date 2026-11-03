@@ -90,7 +90,7 @@ float SoleleitungProcessor::read (int ch, float delay) const noexcept
     return buf[ch][(size_t) i0] + fr * (buf[ch][(size_t) i1] - buf[ch][(size_t) i0]);
 }
 
-void SoleleitungProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void SoleleitungProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

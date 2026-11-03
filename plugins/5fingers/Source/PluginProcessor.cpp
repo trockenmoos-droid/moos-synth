@@ -111,7 +111,7 @@ float FingersProcessor::readMono (double delay) const noexcept
     return 0.5f * (readCh (0, delay) + readCh (1, delay));
 }
 
-void FingersProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void FingersProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

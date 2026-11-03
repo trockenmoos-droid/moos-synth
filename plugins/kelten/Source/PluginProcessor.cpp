@@ -64,7 +64,7 @@ void KeltenProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     voices.reset();
     keyboardState.reset();
     reverb.prepare (sampleRate);
-    wet.setSize (2, samplesPerBlock);
+    wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     for (auto& b : wowBuf) b.assign ((size_t) (sampleRate * 0.05) + 8, 0.0f);
     wowW = 0; wowPhase = 0.0;
     for (int c = 0; c < 2; ++c) { hold[c] = ageLp[c] = 0.0f; droneLp[c].reset(); dronePhase[c] = 0.0; }
@@ -73,7 +73,7 @@ void KeltenProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     gainSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
 }
 
-void KeltenProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+void KeltenProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

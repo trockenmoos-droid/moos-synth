@@ -263,7 +263,7 @@ void AlmProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     voices.reset();
     keyboardState.reset();
     reverb.prepare (sampleRate);
-    wet.setSize (2, samplesPerBlock);
+    wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     for (auto& e : echoBuf) e.assign ((size_t) (sampleRate * 1.7) + 8, 0.0f);
     echoW = 0; echoLp[0] = echoLp[1] = 0.0f;
     gainSm.reset (sampleRate, 0.05);
@@ -272,7 +272,7 @@ void AlmProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     echoTimeSm.setCurrentAndTargetValue (echoZeit->load() * 0.001f * (float) sampleRate);
 }
 
-void AlmProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+void AlmProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

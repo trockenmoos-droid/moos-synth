@@ -71,14 +71,14 @@ void HallstattProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) samplesPerBlock, 1 };
     for (auto& c : colour) { c.prepare (spec); c.reset(); }
     lastRoom = -1;
-    wet.setSize (2, samplesPerBlock);
-    fdnIn.setSize (2, samplesPerBlock);
-    fdnOut.setSize (2, samplesPerBlock);
+    wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
+    fdnIn.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
+    fdnOut.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     mixSm.reset (sr, 0.05);
     mixSm.setCurrentAndTargetValue (mix->load());
 }
 
-void HallstattProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void HallstattProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();

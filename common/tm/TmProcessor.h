@@ -26,6 +26,56 @@ namespace tmk
         }
 
         const juce::String getName() const override { return name; }
+
+        // Größte Blockgröße, die die Plugins intern verarbeiten. Größere Blöcke der DAW werden aufgeteilt.
+        static constexpr int maxChunk = 2048;
+
+        // Die DAW ruft processBlock; hier wird aufgeteilt und abgesichert, die Plugins implementieren process()
+        void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override
+        {
+            if (needsReset.exchange (false))
+                prepareToPlay (getSampleRate() > 0.0 ? getSampleRate() : 48000.0, maxChunk);
+
+            const int total = buffer.getNumSamples();
+            if (total <= maxChunk)
+            {
+                chunkOffset = 0;
+                process (buffer, midi);
+            }
+            else
+            {
+                for (int off = 0; off < total; off += maxChunk)
+                {
+                    const int n = juce::jmin (maxChunk, total - off);
+                    float* ptrs[16] {};
+                    const int chans = juce::jmin (16, buffer.getNumChannels());
+                    for (int c = 0; c < chans; ++c) ptrs[c] = buffer.getWritePointer (c, off);
+                    juce::AudioBuffer<float> part (ptrs, chans, n);
+                    juce::MidiBuffer partMidi;
+                    for (const auto m : midi)
+                        if (m.samplePosition >= off && m.samplePosition < off + n)
+                            partMidi.addEvent (m.getMessage(), m.samplePosition - off);
+                    chunkOffset = off;
+                    process (part, partMidi);
+                }
+                chunkOffset = 0;
+            }
+
+            // Sicherheitsnetz: ungültige Werte (NaN/Inf) nie an die DAW geben; Zustand beim nächsten Block neu aufsetzen
+            if (! isFinite (buffer)) { buffer.clear(); needsReset = true; }
+        }
+        using juce::AudioProcessor::processBlock;
+
+        static bool isFinite (const juce::AudioBuffer<float>& b) noexcept
+        {
+            for (int c = 0; c < b.getNumChannels(); ++c)
+            {
+                const float* d = b.getReadPointer (c);
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                    if (! std::isfinite (d[i])) return false;
+            }
+            return true;
+        }
         bool hasEditor() const override { return true; }
 
         int getNumPrograms() override { return juce::jmax (1, (int) factory.size()); }
@@ -119,6 +169,9 @@ namespace tmk
 
     protected:
         virtual void stateRestored() {}
+        virtual void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) = 0;
+        int chunkOffset = 0;                    // Position des aktuellen Häppchens im DAW-Block
+        std::atomic<bool> needsReset { false };
 
         void resetToDefaults()
         {
