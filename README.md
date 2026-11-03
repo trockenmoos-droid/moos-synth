@@ -9,6 +9,8 @@ C++ / JUCE 8. Von trockenmoos.
 | **HALLSTATT** | Hall | 5 Räume: Salzbergwerk, Beinhaus, Pfarrkirche, Hallstättersee, Eishöhle · Freeze |
 | **SOLELEITUNG** | Delay | Jede Wiederholung fließt durch Rohr, Salz und Strömung · bis zu 4 Stationen · Absperren |
 | **DACHSTEIN** | Synth | Gletscher-Drone: additive, dehnbare Obertöne, Fels, Wind, Eisknistern, Hall |
+| **SARSTEIN** | Verzerrer | 4 Gesteine (Kalk, Granit, Fels, Bergkristall), Geröll, Steinschlag, 4x Oversampling, Auto-Pegel |
+| **5 FINGERS** | Granular-Delay | 5 Abgriffe wie die Plattform am Krippenstein, jeder mit Körnung → Granular-Wolke (Tonhöhe, Rückwärts) |
 
 ## HALLSTATT
 Frühe Reflexionen je Raum (Flatterecho im Stollen, Felswand-Echos über dem See …) + 8-Kanal-Feedback-Delay-Netzwerk
@@ -27,10 +29,20 @@ Bis zu 32 Teiltöne pro Stimme, 8 Stimmen. **Helligkeit**, **Kristall** (dehnt d
 **Schmelze** (Verstimmung), **Fels** (Sub-Oktave), **Wind** mit Farbe und Böen, **Knistern** (Eis), Hall.
 Mod Wheel → Helligkeit, Aftertouch → Bewegung, Sustain-Pedal.
 
+## SARSTEIN
+Tiefe (Hochpass vor der Verzerrung) → Drive bis 48 dB → Kennlinie je Gestein (4-faches Oversampling) →
+Steinschlag (Bit-/Ratenreduktion) → Ton (Tilt um 900 Hz) → High Cut → Auto-Pegel → Mix (phasenrichtig).
+Kalk = weich, Granit = hart, Fels = röhrig/asymmetrisch, Bergkristall = Wavefolder. Geröll = Asymmetrie (gerade Obertöne).
+
+## 5 FINGERS
+Gemeinsame Länge (frei oder im Songtempo); je Finger Zeit (Anteil der Länge), Pegel, Pan, **Körnung**.
+Körner: Größe (10–400 ms), Tonhöhe (±12 Halbtöne), Streuung, Dichte, Rückwärts. Feedback vom längsten Finger –
+mit Tonhöhe +12 entsteht ein Shimmer-Delay.
+
 ## Gemeinsam
 - Werkspresets + eigene Presets (*SPEICHERN* → `Dokumente\trockenmoos\<PLUGIN> Presets`)
-- Hintergrund: prozedurale Landschaft je Plugin (Moos, See in der Abenddämmerung, Holzrohr mit Salzkruste, Gletschereis)
-  oder eigenes Foto (*HINTERGRUND*)
+- Hintergrund (*HINTERGRUND*): jede Landschaft der Serie in jedem Plugin (Moos, Hallstättersee am Abend, Holzrohr mit Salz,
+  Gletscher, Kalkwand, Wolkenmeer vom Krippenstein) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
 - Frei skalierbare Oberfläche
 
 ## Installation (Windows)

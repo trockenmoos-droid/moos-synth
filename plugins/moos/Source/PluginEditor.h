@@ -1,7 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
-#include "MossBackground.h"
+#include <tm/TmTextures.h>
 
 namespace MoosColours
 {
@@ -129,8 +129,11 @@ private:
     void layoutContent();
 
     juce::Image bgImage, bgBlur;
-    juce::SharedResourcePointer<MossBackground::MossCache> mossCache;
+    juce::SharedResourcePointer<tmk::tex::Service> textures;
     bool waitingForMoss = false;
+    juce::String texKey { "moos" };
+    std::function<juce::Image()> texFn;
+    float glassFactor = 0.8f;
 
     std::vector<std::unique_ptr<juce::Component>> owned;
     std::vector<std::unique_ptr<juce::Label>> labels;

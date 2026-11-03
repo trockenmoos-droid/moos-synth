@@ -8,7 +8,7 @@
 #include "Arpeggiator.h"
 #include "Effects.h"
 #include "Presets.h"
-#include "MossBackground.h"
+#include <tm/TmTextures.h>
 
 class MoosProcessor : public juce::AudioProcessor
 {
@@ -72,7 +72,7 @@ private:
     juce::SmoothedValue<float> masterGain;
 
     int currentProgram = 0;
-    juce::SharedResourcePointer<MossBackground::MossCache> mossCache;   // Textur schon vorab rechnen
+    juce::SharedResourcePointer<tmk::tex::Service> textures;   // Textur-Erzeugung lebt mit dem Plugin
 
     using AF = std::atomic<float>*;
     AF hpfHz{}, chorusMix{}, reverbSize{}, reverbMix{}, shimmer{}, volume{};

@@ -85,6 +85,19 @@ int main (int argc, char** argv)
     tt::waitForTexture ("hallstatt", [] { return tmk::tex::lakeAtDusk(); }, dir);
     tt::screenshots<HallstattEditor> (proc, dir, "hallstatt", 1);
 
+    // Hintergrundwahl: andere Landschaft der Serie + mehr Durchsicht
+    {
+        const auto before = tmk::tex::getBackground ("hallstatt");
+        const int beforeD = tmk::tex::getDurchsicht();
+        tmk::tex::setBackground ("hallstatt", "tex:5fingers");
+        tmk::tex::setDurchsicht (2);
+        tt::waitForTexture ("5fingers", tmk::tex::landscapeFor ("5fingers"));
+        tt::screenshots<HallstattEditor> (proc, dir, "hallstatt_wolkenmeer", 1);
+        tt::check (tmk::tex::getBackground ("hallstatt") == "tex:5fingers", "Hintergrundwahl wird gespeichert");
+        tmk::tex::setBackground ("hallstatt", before);
+        tmk::tex::setDurchsicht (beforeD);
+    }
+
     std::printf ("failures=%d\n", tt::failures);
     return tt::failures;
 }

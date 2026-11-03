@@ -361,6 +361,306 @@ namespace tmk::tex
     }
 
     //==========================================================================
+    // MOOS: Moospolster mit Licht und Schatten, grüne und trockene Stellen
+    inline juce::Image mossCushions()
+    {
+        
+        std::vector<float> hf ((size_t) (W * H)), dryMap ((size_t) (W * H));
+
+        // 1) Höhenfeld: gewölbte Moospolster (zufällig verteilte Kuppen) + sanfte Wellen
+        const float cell = 120.0f;
+        const int gw = (int) (W / cell) + 3, gh = (int) (H / cell) + 3;
+        std::vector<juce::Point<float>> centres ((size_t) (gw * gh));
+        std::vector<float> radii ((size_t) (gw * gh));
+        for (int gy = 0; gy < gh; ++gy)
+            for (int gx = 0; gx < gw; ++gx)
+            {
+                const int i = gy * gw + gx;
+                centres[(size_t) i] = { (gx - 1 + hash (gx, gy, 3)) * cell, (gy - 1 + hash (gx, gy, 5)) * cell };
+                radii[(size_t) i]   = cell * (0.75f + 0.6f * hash (gx, gy, 9));
+            }
+
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const int cx = (int) (x / cell) + 1, cy = (int) (y / cell) + 1;
+                float h = 0.0f;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx)
+                    {
+                        const int i = juce::jlimit (0, gh - 1, cy + dy) * gw + juce::jlimit (0, gw - 1, cx + dx);
+                        const float d = centres[(size_t) i].getDistanceFrom ({ (float) x, (float) y }) / radii[(size_t) i];
+                        if (d < 1.0f) h = juce::jmax (h, std::sqrt (1.0f - d * d));
+                    }
+                h = 0.75f * h + 0.35f * fbm (x / 300.0f, y / 300.0f, 3, 21) + 0.12f * fbm (x / 25.0f, y / 25.0f, 2, 33);
+                hf[(size_t) (y * W + x)] = h;
+                dryMap[(size_t) (y * W + x)] = juce::jlimit (0.0f, 1.0f, (fbm (x / 500.0f + 3.0f, y / 500.0f, 3, 41) - 0.5f) * 3.2f);
+            }
+
+        // 2) Licht: Lambert aus dem Gefälle des Höhenfelds, Licht von links oben
+        std::vector<float> shade ((size_t) (W * H));
+        const float lnorm = std::sqrt (0.55f * 0.55f + 0.65f * 0.65f + 0.75f * 0.75f);
+        const float lx = -0.55f / lnorm, ly = -0.65f / lnorm, lz = 0.75f / lnorm;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const int x0 = juce::jmax (0, x - 2), x1 = juce::jmin (W - 1, x + 2);
+                const int y0 = juce::jmax (0, y - 2), y1 = juce::jmin (H - 1, y + 2);
+                const float gx = (hf[(size_t) (y * W + x1)] - hf[(size_t) (y * W + x0)]) * 30.0f;
+                const float gy = (hf[(size_t) (y1 * W + x)] - hf[(size_t) (y0 * W + x)]) * 30.0f;
+                const float nl = std::sqrt (gx * gx + gy * gy + 1.0f);
+                const float lam = juce::jmax (0.0f, (-gx * lx - gy * ly + lz) / nl);
+                const float ao  = juce::jlimit (0.0f, 1.0f, hf[(size_t) (y * W + x)] * 1.3f);
+                shade[(size_t) (y * W + x)] = (0.18f + 0.95f * lam) * (0.25f + 0.75f * ao);
+            }
+
+        // 3) Grundfarbe (dunkle Tiefe zwischen den Blättchen)
+        std::vector<float> R ((size_t) (W * H)), G ((size_t) (W * H)), B ((size_t) (W * H));
+        for (size_t i = 0; i < R.size(); ++i)
+        {
+            const float s = shade[i] * 0.35f;
+            R[i] = (18.0f + 30.0f * dryMap[i]) * s;
+            G[i] = (40.0f + 10.0f * dryMap[i]) * s;
+            B[i] = 10.0f * s;
+        }
+
+        // 4) Hunderttausende Moospflänzchen: kleine Sterne aus Blättchen, Spitzen heller
+        juce::Random rng (2026);
+        auto plot = [&] (float fx, float fy, float r, float g, float b, float a)
+        {
+            const int x = (int) fx, y = (int) fy;
+            if (x < 0 || y < 0 || x >= W || y >= H) return;
+            const size_t i = (size_t) (y * W + x);
+            R[i] += (r - R[i]) * a; G[i] += (g - G[i]) * a; B[i] += (b - B[i]) * a;
+        };
+
+        const int sprigs = 520000;
+        for (int n = 0; n < sprigs; ++n)
+        {
+            const float x = rng.nextFloat() * W, y = rng.nextFloat() * H;
+            const size_t pi = (size_t) ((int) y * W + (int) x);
+            const float h = hf[pi];
+            if (rng.nextFloat() > h * 1.6f) continue;                 // weniger in den Ritzen
+
+            const float sh  = shade[pi] * (0.75f + 0.5f * rng.nextFloat());
+            const float dry = dryMap[pi];
+            // Farbe: von sattem Grün bis trockenem Goldbraun
+            const float baseR = juce::jmap (dry, 70.0f, 165.0f);
+            const float baseG = juce::jmap (dry, 125.0f, 135.0f);
+            const float baseB = juce::jmap (dry, 25.0f, 55.0f);
+            const float hue   = rng.nextFloat() * 0.35f;               // etwas Gelbgrün einstreuen
+
+            const int leaves = 5 + rng.nextInt (4);
+            const float len  = 3.0f + rng.nextFloat() * 5.5f;
+            const float rot  = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+            for (int l = 0; l < leaves; ++l)
+            {
+                const float ang = rot + (float) l / leaves * juce::MathConstants<float>::twoPi + (rng.nextFloat() - 0.5f) * 0.5f;
+                const float ll  = len * (0.6f + 0.5f * rng.nextFloat());
+                const float dx = std::cos (ang), dy = std::sin (ang);
+                const float bend = (rng.nextFloat() - 0.5f) * 0.25f;
+                for (float t = 0.0f; t <= ll; t += 0.7f)
+                {
+                    const float u = t / ll;
+                    const float bright = sh * (0.65f + 0.6f * u);       // Spitzen fangen mehr Licht
+                    plot (x + dx * t - dy * bend * t * u, y + dy * t + dx * bend * t * u,
+                          juce::jmin (255.0f, (baseR + hue * 60.0f) * bright),
+                          juce::jmin (255.0f, (baseG + hue * 40.0f) * bright),
+                          juce::jmin (255.0f, baseB * bright),
+                          0.55f + 0.3f * u);
+                }
+            }
+            // gelegentlich ein Sporenkapsel-Stiel (feine rotbraune Linie mit hellem Kopf)
+            if (rng.nextFloat() < 0.004f * h)
+            {
+                const float ang = -juce::MathConstants<float>::halfPi + (rng.nextFloat() - 0.5f) * 1.2f;
+                const float ll = 18.0f + rng.nextFloat() * 22.0f;
+                for (float t = 0.0f; t <= ll; t += 0.6f)
+                    plot (x + std::cos (ang) * t, y + std::sin (ang) * t, 120.0f * sh + 40.0f, 60.0f * sh + 20.0f, 30.0f, 0.7f);
+                plot (x + std::cos (ang) * ll, y + std::sin (ang) * ll, 190.0f, 140.0f, 70.0f, 0.9f);
+                plot (x + std::cos (ang) * ll + 1, y + std::sin (ang) * ll, 170.0f, 120.0f, 60.0f, 0.9f);
+            }
+        }
+
+        juce::Image img (juce::Image::RGB, W, H, true);
+        {
+            juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
+            for (int y = 0; y < H; ++y)
+                for (int x = 0; x < W; ++x)
+                {
+                    const size_t i = (size_t) (y * W + x);
+                    bd.setPixelColour (x, y, juce::Colour ((juce::uint8) juce::jlimit (0.0f, 255.0f, R[i]),
+                                                           (juce::uint8) juce::jlimit (0.0f, 255.0f, G[i]),
+                                                           (juce::uint8) juce::jlimit (0.0f, 255.0f, B[i])));
+                }
+        }
+
+        juce::Graphics g (img);
+        juce::ColourGradient lightSpot (juce::Colour (0x28fff2c0), W * 0.2f, H * 0.1f,
+                                        juce::Colour (0x00fff2c0), W * 0.8f, H * 0.8f, true);
+        g.setGradientFill (lightSpot);
+        g.fillAll();
+        juce::ColourGradient vig (juce::Colour (0x00000000), W * 0.5f, H * 0.45f,
+                                  juce::Colour (0xa0000000), 0.0f, 0.0f, true);
+        g.setGradientFill (vig);
+        g.fillAll();
+        return img;
+    }
+
+
+    //==========================================================================
+    // SARSTEIN: Kalkwand – Bankung, Klüfte, Tintenstriche, Flechten
+    inline juce::Image limestone()
+    {
+        RGB px;
+        const float bedH = 150.0f;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                // leicht geneigte, gewellte Schichtung
+                const float warp = 18.0f * fbm (fx / 400.0f, 0.5f, 3, 4) + fx * 0.06f;
+                const float by = fy + warp;
+                const int bed = (int) std::floor (by / bedH);
+                const float inBed = by - bed * bedH;
+                const float bedTone = hash (bed, 0, 91) * 0.12f;
+
+                float lum = 0.56f + bedTone + 0.18f * (fbm (fx / 60.0f, fy / 60.0f, 5, 12) - 0.5f)
+                          + 0.06f * (fbm (fx / 6.0f, fy / 6.0f, 2, 13) - 0.5f);
+                // Bankungsfuge
+                if (inBed < 5.0f) lum *= 0.35f + 0.13f * inBed;
+                else if (inBed < 14.0f) lum *= 1.08f;                    // Oberkante fängt Licht
+                // Klüfte: senkrechte Risse, pro Bank versetzt
+                for (int j = 0; j < 4; ++j)
+                {
+                    const float jx = hash (bed, j, 92) * W + 30.0f * (fbm (fy / 40.0f, (float) j, 2, bed + j) - 0.5f);
+                    const float d = std::abs (fx - jx);
+                    if (d < 2.5f) lum *= 0.3f + 0.25f * d;
+                    else if (d < 6.0f) lum *= 0.85f + 0.025f * d;
+                }
+                // Tintenstriche: dunkle Wasserstreifen von oben nach unten
+                const float streak = fbm (fx / 22.0f, fy / 900.0f, 3, 31);
+                const float wet = juce::jlimit (0.0f, 1.0f, (streak - 0.55f) * 4.0f) * (0.5f + 0.5f * fbm (fx / 200.0f, 1.0f, 2, 32));
+                juce::Colour c = juce::Colour::fromFloatRGBA (lum * 1.0f, lum * 0.99f, lum * 0.95f, 1.0f);
+                c = c.interpolatedWith (juce::Colour (0xff2a2e33), wet * 0.65f);
+                // Flechten: orange und gelbgrün, fleckig
+                const float l1 = fbm (fx / 14.0f, fy / 14.0f, 3, 51), l2 = fbm (fx / 18.0f + 9.0f, fy / 18.0f, 3, 52);
+                if (l1 > 0.72f) c = c.interpolatedWith (juce::Colour (0xffc8742c), juce::jlimit (0.0f, 0.75f, (l1 - 0.72f) * 7.0f));
+                if (l2 > 0.74f) c = c.interpolatedWith (juce::Colour (0xffa9b04a), juce::jlimit (0.0f, 0.7f, (l2 - 0.74f) * 7.0f));
+                // Moos in den Fugen
+                if (inBed < 9.0f && fbm (fx / 30.0f, (float) bed, 2, 61) > 0.6f) c = c.interpolatedWith (juce::Colour (0xff4b6a22), 0.6f);
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        {
+            juce::Graphics g (img);
+            juce::ColourGradient light (juce::Colour (0x30fff1d0), W * 0.8f, 0.0f, juce::Colour (0x00fff1d0), W * 0.2f, (float) H, false);
+            g.setGradientFill (light);
+            g.fillAll();
+        }
+        vignette (img, 0.6f);
+        return img;
+    }
+
+    //==========================================================================
+    // 5 FINGERS: Blick vom Krippenstein – Wolkenmeer im Morgenlicht, Gipfel ragen heraus
+    inline juce::Image cloudSea()
+    {
+        RGB px;
+        const int horizon = (int) (H * 0.42f);
+        auto ridge = [] (int x, float base, float amp, float scale, int seed)
+        {
+            float r = fbm ((float) x / scale, 0.5f, 5, seed);
+            r = 1.0f - std::abs (r * 2.0f - 1.0f);
+            return base - amp * r;
+        };
+        std::vector<float> peaksFar ((size_t) W), peaksNear ((size_t) W);
+        for (int x = 0; x < W; ++x)
+        {
+            const float u = (float) x / W;
+            const float m1 = std::exp (-std::pow ((u - 0.28f) / 0.09f, 2.0f)), m2 = std::exp (-std::pow ((u - 0.72f) / 0.12f, 2.0f));
+            peaksFar[(size_t) x]  = ridge (x, (float) horizon + 30.0f, 90.0f + 260.0f * m1 + 170.0f * m2, 180.0f, 5) + 12.0f * (fbm (x / 12.0f, 2.0f, 2, 6) - 0.5f);
+            peaksNear[(size_t) x] = H * 1.08f - H * 0.62f * std::exp (-std::pow ((u - 0.97f) / 0.1f, 2.0f))
+                                    - 30.0f * fbm ((float) x / 40.0f, 1.0f, 3, 9);
+        }
+        // geglättete Flankenneigung (für die Beleuchtung, ohne Streifen)
+        std::vector<float> slopeFar ((size_t) W);
+        for (int x = 0; x < W; ++x)
+        {
+            const int a = juce::jmax (0, x - 70), b = juce::jmin (W - 1, x + 70);
+            slopeFar[(size_t) x] = (peaksFar[(size_t) b] - peaksFar[(size_t) a]) / (float) (b - a);
+        }
+
+        const juce::Colour zenith (0xff1c2d5a), mid (0xff8a6f9e), dawn (0xfff2a86e), sun (0xfffff1c8);
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const float t = juce::jlimit (0.0f, 1.0f, fy / (horizon + 60.0f));
+                juce::Colour c = t < 0.55f ? zenith.interpolatedWith (mid, t / 0.55f) : mid.interpolatedWith (dawn, (t - 0.55f) / 0.45f);
+                const float sd = std::hypot ((fx - W * 0.62f) / W, (fy - horizon) / H);
+                c = c.interpolatedWith (sun, juce::jlimit (0.0f, 1.0f, 0.9f - sd * 5.0f));
+
+                // Gipfel (Morgenlicht von rechts: Ostflanken rosa, Schnee)
+                if (fy >= peaksFar[(size_t) x])
+                {
+                    const float gx = fbm ((fx + 3.0f) / 45.0f, fy / 45.0f, 4, 18) - fbm ((fx - 3.0f) / 45.0f, fy / 45.0f, 4, 18);
+                    const float lit = juce::jlimit (0.0f, 1.0f, 0.5f + slopeFar[(size_t) x] * 1.2f + gx * 6.0f);
+                    const float snowAmt = juce::jlimit (0.0f, 1.0f, (fbm (fx / 14.0f, fy / 50.0f, 3, 17) - 0.42f) * 3.0f)
+                                        * juce::jlimit (0.0f, 1.0f, 1.0f - (fy - peaksFar[(size_t) x]) / 220.0f);
+                    const juce::Colour rock  = juce::Colour (0xff2e2c44).interpolatedWith (juce::Colour (0xff86636a), lit);
+                    const juce::Colour snowC = juce::Colour (0xff8d93b8).interpolatedWith (juce::Colour (0xfffbd9cc), lit);
+                    c = rock.interpolatedWith (snowC, snowAmt);
+                }
+
+                // Wolkenmeer
+                const float cloudTop = H * 0.5f + 40.0f * (fbm (fx / 260.0f, 3.0f, 4, 23) - 0.5f);
+                if (fy > cloudTop)
+                {
+                    const float depth = (fy - cloudTop) / (H - cloudTop);
+                    // Perspektive: vorne große Wolkenballen, hinten kleine
+                    const float sc = 0.3f + 1.4f * depth;
+                    const float puff  = fbm (fx / (170.0f * sc), fy / (70.0f * sc), 5, 29);
+                    const float above = fbm (fx / (170.0f * sc), (fy - 10.0f * sc) / (70.0f * sc), 5, 29);
+                    // Oberseiten der Ballen fangen Licht
+                    const float shade = juce::jlimit (0.0f, 1.0f, 0.55f + (puff - 0.5f) * 1.1f + (puff - above) * 3.5f - depth * 0.2f);
+                    juce::Colour cl = juce::Colour (0xff6d6a96).interpolatedWith (juce::Colour (0xfffde6d6), shade);
+                    cl = cl.interpolatedWith (juce::Colour (0xffffc994), 0.35f * juce::jlimit (0.0f, 1.0f, 1.0f - std::abs (fx / W - 0.62f) * 2.5f) * (1.0f - depth));
+                    const float edge = juce::jlimit (0.0f, 1.0f, (fy - cloudTop) / 25.0f);
+                    c = c.interpolatedWith (cl, edge);
+                }
+                // naher Grat rechts (Krippenstein)
+                if (fy >= peaksNear[(size_t) x])
+                    c = juce::Colour (0xff17141f).interpolatedWith (juce::Colour (0xff2c2433), fbm (fx / 20.0f, fy / 20.0f, 3, 41));
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        vignette (img, 0.5f);
+        return img;
+    }
+
+    //==========================================================================
+    // Alle Landschaften der Serie – in jedem Plugin wählbar
+    struct Landscape { const char* key; const char* label; std::function<juce::Image()> make; };
+    inline const std::vector<Landscape>& landscapes()
+    {
+        static const std::vector<Landscape> l = {
+            { "moos",        "Moos (MOOS)",                              [] { return mossCushions(); } },
+            { "hallstatt",   "Hallst\xc3\xa4ttersee am Abend (HALLSTATT)", [] { return lakeAtDusk(); } },
+            { "soleleitung", "Holzrohr mit Salz (SOLELEITUNG)",          [] { return woodPipe(); } },
+            { "dachstein",   "Gletscher (DACHSTEIN)",                    [] { return glacierIce(); } },
+            { "sarstein",    "Kalkwand (SARSTEIN)",                      [] { return limestone(); } },
+            { "5fingers",    "Wolkenmeer vom Krippenstein (5 FINGERS)",  [] { return cloudSea(); } },
+        };
+        return l;
+    }
+    inline std::function<juce::Image()> landscapeFor (const juce::String& key)
+    {
+        for (auto& l : landscapes()) if (key == l.key) return l.make;
+        return landscapes().front().make;
+    }
+
+    //==========================================================================
     inline juce::Image blurred (const juce::Image& src)
     {
         auto small = src.rescaled (src.getWidth() / 24, src.getHeight() / 24, juce::Graphics::highResamplingQuality);
@@ -424,7 +724,11 @@ namespace tmk::tex
         std::map<juce::String, std::pair<juce::Image, juce::Image>> done;
     };
 
-    // Pro Plugin gemerkter Pfad zu einem eigenen Hintergrundfoto
+    // Hintergrund-Einstellungen (gelten für alle Instanzen eines Plugins)
+    //   background_<plugin>: ""  = eigene Landschaft des Plugins
+    //                        "tex:<key>" = andere Landschaft der Serie
+    //                        sonst Pfad zu einem eigenen Foto
+    //   durchsicht: 0 = wenig, 1 = mittel, 2 = viel (wie stark der Hintergrund durch die Felder scheint)
     inline juce::PropertiesFile::Options settingsOptions()
     {
         juce::PropertiesFile::Options o;
@@ -434,16 +738,69 @@ namespace tmk::tex
         o.osxLibrarySubFolder = "Application Support";
         return o;
     }
-    inline juce::String getPhotoPath (const juce::String& plugin)
+    inline juce::String getSetting (const juce::String& key)
     {
         juce::PropertiesFile f (settingsOptions());
-        return f.getValue ("background_" + plugin);
+        return f.getValue (key);
     }
-    inline void setPhotoPath (const juce::String& plugin, const juce::String& path)
+    inline void setSetting (const juce::String& key, const juce::String& value)
     {
         juce::PropertiesFile f (settingsOptions());
-        if (path.isEmpty()) f.removeValue ("background_" + plugin);
-        else                f.setValue ("background_" + plugin, path);
+        if (value.isEmpty()) f.removeValue (key); else f.setValue (key, value);
         f.saveIfNeeded();
+    }
+    inline juce::String getBackground (const juce::String& plugin)                     { return getSetting ("background_" + plugin); }
+    inline void setBackground (const juce::String& plugin, const juce::String& value) { setSetting ("background_" + plugin, value); }
+    inline int getDurchsicht()             { return juce::jlimit (0, 2, getSetting ("durchsicht").getIntValue()); }
+    inline void setDurchsicht (int v)      { setSetting ("durchsicht", juce::String (v)); }
+    inline float glassFactor (int d)       { return d == 0 ? 1.15f : (d == 1 ? 0.8f : 0.45f); }
+
+    // Baut das Hintergrund-Menü (gemeinsam für alle Plugins)
+    inline void showBackgroundMenu (juce::Component& target, const juce::String& plugin, const juce::String& ownKey,
+                                    std::function<void()> changed, std::unique_ptr<juce::FileChooser>& chooser)
+    {
+        const auto current = getBackground (plugin);
+        juce::PopupMenu m;
+        m.addSectionHeader ("Landschaft");
+        int id = 1;
+        for (auto& l : landscapes())
+        {
+            const juce::String key (l.key);
+            const bool ticked = (current.isEmpty() && key == ownKey) || current == "tex:" + key;
+            m.addItem (id++, juce::String::fromUTF8 (l.label), true, ticked);
+        }
+        m.addSeparator();
+        m.addItem (100, "Eigenes Foto laden ...", true, current.isNotEmpty() && ! current.startsWith ("tex:"));
+        m.addSeparator();
+        m.addSectionHeader ("Durchsicht der Felder");
+        const int d = getDurchsicht();
+        m.addItem (200, "wenig", true, d == 0);
+        m.addItem (201, "mittel", true, d == 1);
+        m.addItem (202, "viel", true, d == 2);
+
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target),
+                         [plugin, ownKey, changed, &chooser] (int r)
+        {
+            if (r >= 1 && r <= (int) landscapes().size())
+            {
+                const juce::String key (landscapes()[(size_t) r - 1].key);
+                setBackground (plugin, key == ownKey ? juce::String() : "tex:" + key);
+                changed();
+            }
+            else if (r >= 200 && r <= 202) { setDurchsicht (r - 200); changed(); }
+            else if (r == 100)
+            {
+                chooser = std::make_unique<juce::FileChooser> (juce::String::fromUTF8 ("Hintergrundfoto w\xc3\xa4hlen"),
+                    juce::File::getSpecialLocation (juce::File::userPicturesDirectory), "*.jpg;*.jpeg;*.png");
+                chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                      [plugin, changed] (const juce::FileChooser& fc)
+                                      {
+                                          const auto f = fc.getResult();
+                                          if (! f.existsAsFile()) return;
+                                          setBackground (plugin, f.getFullPathName());
+                                          changed();
+                                      });
+            }
+        });
     }
 }

@@ -120,6 +120,7 @@ namespace tmk
             juce::String title;
             int page = -1;   // -1 = immer sichtbar
             std::vector<Item> items;
+            int columns = 0;  // > 0: Elemente in einem Raster mit so vielen Spalten
             std::vector<juce::Component*> headerButtons;
             juce::Rectangle<int> bounds;
         };
@@ -202,6 +203,21 @@ namespace tmk
                 header.removeFromRight (4);
             }
             auto inner = area.reduced (10, 8).withTrimmedTop (22);
+            if (s.columns > 0)
+            {
+                const int rows = ((int) s.items.size() + s.columns - 1) / s.columns;
+                const int cw = inner.getWidth() / s.columns, ch = inner.getHeight() / juce::jmax (1, rows);
+                for (size_t i = 0; i < s.items.size(); ++i)
+                {
+                    auto& it = s.items[i];
+                    auto cell = juce::Rectangle<int> (inner.getX() + (int) (i % (size_t) s.columns) * cw,
+                                                      inner.getY() + (int) (i / (size_t) s.columns) * ch, cw, ch);
+                    if (it.label != nullptr) it.label->setBounds (cell.removeFromTop (15));
+                    const int size = juce::jmin (cell.getWidth() - 6, cell.getHeight());
+                    it.comp->setBounds (cell.withSizeKeepingCentre (juce::jmax (54, size), cell.getHeight()));
+                }
+                return;
+            }
             float total = 0.0f;
             for (auto& it : s.items) total += it.weight;
             const int fullW = inner.getWidth();
@@ -310,7 +326,7 @@ namespace tmk
                     clip.addRoundedRectangle (b, 8.0f);
                     g.reduceClipRegion (clip);
                     if (bgBlur.isValid()) g.drawImage (bgBlur, full, juce::RectanglePlacement::fillDestination);
-                    g.setColour (cfg.theme.glass);
+                    g.setColour (cfg.theme.glass.withMultipliedAlpha (glassFactor));
                     g.fillRect (b);
                 }
                 g.setColour (cfg.theme.outline);
@@ -330,7 +346,7 @@ namespace tmk
 
         void timerCallback() override
         {
-            if (waitingForTexture && textures->get (cfg.textureName, cfg.texture, bgImage, bgBlur))
+            if (waitingForTexture && textures->get (texKey, texFn, bgImage, bgBlur))
             {
                 waitingForTexture = false;
                 content.repaint();
@@ -406,44 +422,37 @@ namespace tmk
         // --- Hintergrund ---
         void backgroundMenu()
         {
-            juce::PopupMenu m;
-            m.addItem (1, "Eigenes Foto laden ...");
-            m.addItem (2, "Landschaft (Standard)", true, tex::getPhotoPath (cfg.textureName).isEmpty());
-            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (bgButton), [this] (int r)
-            {
-                if (r == 2) { tex::setPhotoPath (cfg.textureName, {}); loadBackground(); }
-                if (r == 1)
-                {
-                    chooser = std::make_unique<juce::FileChooser> (u8 ("Hintergrundfoto w\xc3\xa4hlen"),
-                        juce::File::getSpecialLocation (juce::File::userPicturesDirectory), "*.jpg;*.jpeg;*.png");
-                    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                          [this] (const juce::FileChooser& fc)
-                                          {
-                                              const auto f = fc.getResult();
-                                              if (! f.existsAsFile()) return;
-                                              tex::setPhotoPath (cfg.textureName, f.getFullPathName());
-                                              loadBackground();
-                                          });
-                }
-            });
+            tex::showBackgroundMenu (bgButton, cfg.textureName, cfg.textureName, [this] { loadBackground(); }, chooser);
         }
 
         void loadBackground()
         {
             waitingForTexture = false;
-            const auto path = tex::getPhotoPath (cfg.textureName);
-            if (path.isNotEmpty())
+            glassFactor = tex::glassFactor (tex::getDurchsicht());
+            const auto choice = tex::getBackground (cfg.textureName);
+            texKey = cfg.textureName;
+            texFn  = cfg.texture;
+            if (choice.startsWith ("tex:"))
             {
-                auto img = tex::fromPhoto (juce::File (path));
+                texKey = choice.fromFirstOccurrenceOf ("tex:", false, false);
+                texFn  = tex::landscapeFor (texKey);
+            }
+            else if (choice.isNotEmpty())
+            {
+                auto img = tex::fromPhoto (juce::File (choice));
                 if (img.isValid()) { bgImage = img; bgBlur = tex::blurred (img); content.repaint(); return; }
             }
-            if (! textures->get (cfg.textureName, cfg.texture, bgImage, bgBlur))
+            if (! textures->get (texKey, texFn, bgImage, bgBlur))
             {
                 bgImage = {}; bgBlur = {};
                 waitingForTexture = true;
             }
             content.repaint();
         }
+
+        juce::String texKey;
+        std::function<juce::Image()> texFn;
+        float glassFactor = 0.8f;
 
         juce::SharedResourcePointer<tex::Service> textures;
         bool waitingForTexture = false;

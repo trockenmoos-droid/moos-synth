@@ -1,7 +1,7 @@
 // Offline-Test: spielt einen Akkord durch MOOS und schreibt render.wav
 #include "../plugins/moos/Source/PluginProcessor.h"
 #include "../plugins/moos/Source/PluginEditor.h"
-#include "../plugins/moos/Source/MossBackground.h"
+#include <tm/TmTextures.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 
 int main (int argc, char** argv)
@@ -63,9 +63,9 @@ int main (int argc, char** argv)
 
     // Editor erzeugen und alle Seiten als PNG speichern
     {
-        juce::SharedResourcePointer<MossBackground::MossCache> cache;
+        juce::SharedResourcePointer<tmk::tex::Service> cache;
         juce::Image a, b;
-        for (int i = 0; i < 300 && ! cache->get (a, b); ++i) juce::Thread::sleep (50);
+        for (int i = 0; i < 300 && ! cache->get ("moos", tmk::tex::landscapeFor ("moos"), a, b); ++i) juce::Thread::sleep (50);
     }
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     ed->setSize (1200, 780);
@@ -81,7 +81,7 @@ int main (int argc, char** argv)
     }
     ed.reset();
     {
-        auto moss = MossBackground::generateMoss();
+        auto moss = tmk::tex::mossCushions();
         auto mf = f.getSiblingFile ("moss.png");
         mf.deleteFile();
         juce::FileOutputStream os (mf);

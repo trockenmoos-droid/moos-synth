@@ -527,7 +527,7 @@ void MoosEditor::paintContent (juce::Graphics& g)
             clip.addRoundedRectangle (b, 8.0f);
             g.reduceClipRegion (clip);
             if (bgBlur.isValid()) g.drawImage (bgBlur, full, juce::RectanglePlacement::fillDestination);
-            g.setColour (glass);
+            g.setColour (glass.withMultipliedAlpha (glassFactor));
             g.fillRect (b);
         }
         g.setColour (outline);
@@ -553,7 +553,7 @@ void MoosEditor::paintContent (juce::Graphics& g)
 //==============================================================================
 void MoosEditor::timerCallback()
 {
-    if (waitingForMoss && mossCache->get (bgImage, bgBlur))
+    if (waitingForMoss && textures->get (texKey, texFn, bgImage, bgBlur))
     {
         waitingForMoss = false;
         content.repaint();
@@ -654,48 +654,42 @@ void MoosEditor::chooseWavetable (int osc)
 
 void MoosEditor::backgroundMenu()
 {
-    juce::PopupMenu m;
-    m.addItem (1, "Eigenes Foto laden ...");
-    m.addItem (2, "Moos-Textur (Standard)", true, MossBackground::getPhotoPath().isEmpty());
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (bgButton), [this] (int r)
-    {
-        if (r == 2) { MossBackground::setPhotoPath ({}); loadBackground(); }
-        if (r == 1)
-        {
-            chooser = std::make_unique<juce::FileChooser> (juce::String::fromUTF8 ("Hintergrundfoto w\xc3\xa4hlen"),
-                                                           juce::File::getSpecialLocation (juce::File::userPicturesDirectory),
-                                                           "*.jpg;*.jpeg;*.png");
-            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                  [this] (const juce::FileChooser& fc)
-                                  {
-                                      const auto f = fc.getResult();
-                                      if (! f.existsAsFile()) return;
-                                      MossBackground::setPhotoPath (f.getFullPathName());
-                                      loadBackground();
-                                  });
-        }
-    });
+    tmk::tex::showBackgroundMenu (bgButton, "moos", "moos", [this] { loadBackground(); }, chooser);
 }
 
 void MoosEditor::loadBackground()
 {
     waitingForMoss = false;
-    const auto path = MossBackground::getPhotoPath();
-    if (path.isNotEmpty())
+    glassFactor = tmk::tex::glassFactor (tmk::tex::getDurchsicht());
+
+    // Übernahme eines Fotos aus MOOS v0.2 (eigene Einstellungsdatei)
+    if (tmk::tex::getBackground ("moos").isEmpty())
     {
-        auto img = MossBackground::fromPhoto (juce::File (path));
-        if (img.isValid())
-        {
-            bgImage = img;
-            bgBlur  = MossBackground::blurred (img);
-            content.repaint();
-            return;
-        }
+        juce::PropertiesFile::Options o;
+        o.applicationName = "MOOS"; o.folderName = "trockenmoos"; o.filenameSuffix = ".settings";
+        o.osxLibrarySubFolder = "Application Support";
+        juce::PropertiesFile old (o);
+        const auto oldPath = old.getValue ("backgroundImage");
+        if (oldPath.isNotEmpty()) { tmk::tex::setBackground ("moos", oldPath); old.removeValue ("backgroundImage"); old.saveIfNeeded(); }
     }
-    if (! mossCache->get (bgImage, bgBlur))
+
+    const auto choice = tmk::tex::getBackground ("moos");
+    texKey = "moos";
+    texFn  = tmk::tex::landscapeFor ("moos");
+    if (choice.startsWith ("tex:"))
+    {
+        texKey = choice.fromFirstOccurrenceOf ("tex:", false, false);
+        texFn  = tmk::tex::landscapeFor (texKey);
+    }
+    else if (choice.isNotEmpty())
+    {
+        auto img = tmk::tex::fromPhoto (juce::File (choice));
+        if (img.isValid()) { bgImage = img; bgBlur = tmk::tex::blurred (img); content.repaint(); return; }
+    }
+    if (! textures->get (texKey, texFn, bgImage, bgBlur))
     {
         bgImage = {}; bgBlur = {};
-        waitingForMoss = true;      // Timer holt die Textur, sobald sie fertig ist
+        waitingForMoss = true;
     }
     content.repaint();
 }
