@@ -1,6 +1,15 @@
 // Preset-Wechsel und zufällige Reglersprünge während gespielt wird – sucht nach NaN, Inf und Aufschaukeln
 #include "TestUtil.h"
 #include STRESS_HEADER
+
+// Generative Plugins (Sequenzer) spielen von selbst weiter: für die Stille-Prüfung anhalten
+static void stopGenerators (juce::AudioProcessor& p)
+{
+    for (auto* prm : p.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
+            if (r->getParameterID() == "frei" || r->getParameterID() == "klatsch")
+                r->setValueNotifyingHost (0.0f);
+}
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 
 template <typename Proc>
@@ -56,6 +65,7 @@ static void stress (const char* name, int seconds, bool randomParams, int seed)
         juce::ignoreUnused (notesOn);
     }
 
+    stopGenerators (proc);
     // danach: alles aus, 20 s Stille – muss leise werden
     {
         juce::MidiBuffer m; m.addEvent (juce::MidiMessage::allNotesOff (1), 0);

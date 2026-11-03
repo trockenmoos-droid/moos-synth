@@ -53,6 +53,7 @@ namespace tt
         p.setPlayConfigDetails (2, 2, sr, block);
         p.prepareToPlay (sr, block);
         juce::AudioBuffer<float> out (2, in.getNumSamples());
+        out.clear();
         juce::AudioBuffer<float> buf (2, block);
         for (int pos = 0; pos + block <= in.getNumSamples(); pos += block)
         {

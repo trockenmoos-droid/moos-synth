@@ -1,6 +1,15 @@
 // Wie in einer DAW: Audio läuft in einem eigenen Thread, die Oberfläche wechselt gleichzeitig Presets.
 #include "TestUtil.h"
 #include STRESS_HEADER
+
+// Generative Plugins (Sequenzer) spielen von selbst weiter: für die Stille-Prüfung anhalten
+static void stopGenerators (juce::AudioProcessor& p)
+{
+    for (auto* prm : p.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
+            if (r->getParameterID() == "frei" || r->getParameterID() == "klatsch")
+                r->setValueNotifyingHost (0.0f);
+}
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 
 struct AudioLoop : juce::Thread
@@ -77,6 +86,7 @@ int main (int argc, char** argv)
     }
     // Stille-Phase: Hall/Delay mit Feedback klingt lange aus -> ein ruhiges Preset wählen und Feedback-Regler zurück
     proc->setCurrentProgram (0);
+    stopGenerators (*proc);
     audio.silencePhase = true;
     juce::Thread::sleep (25000);
     audio.stopThread (2000);

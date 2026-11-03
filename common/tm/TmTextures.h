@@ -987,6 +987,71 @@ namespace tmk::tex
 
     //==========================================================================
     // Alle Landschaften der Serie – in jedem Plugin wählbar
+
+    // HAMMERSCHMIED: gehämmertes, dunkles Eisen mit Hammerschlag-Dellen, Glutrissen und Funken
+    inline juce::Image forgedIron()
+    {
+        RGB px;
+        juce::Random rnd (1871);
+        // Hammerschläge: zufällig verteilte, runde Dellen
+        struct Dent { float x, y, r; };
+        std::vector<Dent> dents;
+        for (int i = 0; i < 900; ++i) dents.push_back ({ rnd.nextFloat() * W, rnd.nextFloat() * H, 18.0f + rnd.nextFloat() * 46.0f });
+        std::vector<float> shade ((size_t) (W * H), 0.0f);
+        for (auto& d : dents)
+        {
+            const int x0 = juce::jmax (0, (int) (d.x - d.r)), x1 = juce::jmin (W - 1, (int) (d.x + d.r));
+            const int y0 = juce::jmax (0, (int) (d.y - d.r)), y1 = juce::jmin (H - 1, (int) (d.y + d.r));
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x)
+                {
+                    const float dx = (x - d.x) / d.r, dy = (y - d.y) / d.r;
+                    const float q = dx * dx + dy * dy;
+                    if (q < 1.0f) shade[(size_t) (y * W + x)] += (dx * -0.6f + dy * -0.8f) * (1.0f - q) * 0.5f;   // Licht von oben links
+                }
+        }
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const float n = fbm (fx / 220.0f, fy / 220.0f, 5, 11);
+                const float scale = fbm (fx / 18.0f, fy / 18.0f, 3, 12);           // Zunder
+                const float sh = juce::jlimit (-0.5f, 0.5f, shade[(size_t) (y * W + x)]);
+                juce::Colour c = juce::Colour (0xff121314).interpolatedWith (juce::Colour (0xff4a4d52), juce::jlimit (0.0f, 1.0f, n * 0.8f + scale * 0.25f + sh));
+                // bläulich-violette Anlauffarben
+                const float temper = fbm (fx / 400.0f, fy / 300.0f, 3, 13);
+                if (temper > 0.6f) c = c.interpolatedWith (juce::Colour (0xff3a3f6a), (temper - 0.6f) * 1.5f);
+                // Glut: Risse von unten heraus glühend
+                const float crack = std::abs (fbm (fx / 120.0f, fy / 70.0f, 5, 14) - 0.5f);
+                const float heat = juce::jlimit (0.0f, 1.0f, (fy / H - 0.45f) * 1.8f);
+                if (crack < 0.035f * heat)
+                {
+                    const float k = 1.0f - crack / (0.035f * heat + 1.0e-6f);
+                    c = c.interpolatedWith (juce::Colour (0xffff6a10).interpolatedWith (juce::Colour (0xffffd070), k * k), juce::jlimit (0.0f, 1.0f, k * 1.4f));
+                }
+                // warmer Schein von der Esse unten
+                c = c.interpolatedWith (juce::Colour (0xff6a1c04), heat * heat * 0.35f);
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        {
+            juce::Graphics g (img);
+            // Funken: kurze, glühende Bahnen nach oben
+            for (int i = 0; i < 260; ++i)
+            {
+                const float x = rnd.nextFloat() * W, y = H * (0.25f + 0.75f * rnd.nextFloat());
+                const float len = 6.0f + rnd.nextFloat() * 34.0f, ang = -1.57f + (rnd.nextFloat() - 0.5f) * 1.6f;
+                const float a = 0.35f + 0.65f * rnd.nextFloat();
+                juce::Path p; p.startNewSubPath (x, y); p.lineTo (x + std::cos (ang) * len, y + std::sin (ang) * len);
+                g.setColour (juce::Colour (0xffff8a20).withAlpha (a * 0.35f));
+                g.strokePath (p, juce::PathStrokeType (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setColour (juce::Colour (0xffffe2a0).withAlpha (a));
+                g.strokePath (p, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+        }
+        return img;
+    }
+
     struct Landscape { const char* key; const char* label; std::function<juce::Image()> make; };
     inline const std::vector<Landscape>& landscapes()
     {
@@ -1000,8 +1065,9 @@ namespace tmk::tex
             { "sanktwolfgang", "Glasfenster (SANKT WOLFGANG)",           [] { return stainedGlass(); } },
             { "landfriedalm",  "Almwiese (LANDFRIEDALM)",                [] { return almMeadow(); } },
             { "kelten",        "Keltische Bronze (KELTEN)",              [] { return celticBronze(); } },
-            { "roemer",        "RÃ¶misches Mosaik (RÃMER)",  [] { return romanMosaic(); } },
+            { "roemer",        "R\xc3\xb6misches Mosaik (R\xc3\x96MER)",  [] { return romanMosaic(); } },
             { "pascher",       "Hirschleder (GOISERER PASCHER)",         [] { return leather(); } },
+            { "hammerschmied", "Geschmiedetes Eisen (HAMMERSCHMIED)",   [] { return forgedIron(); } },
         };
         return l;
     }

@@ -272,6 +272,7 @@ namespace tmk
                     auto cell = juce::Rectangle<int> (inner.getX() + (int) (i % (size_t) s.columns) * cw,
                                                       inner.getY() + (int) (i / (size_t) s.columns) * ch, cw, ch);
                     if (it.label != nullptr) it.label->setBounds (cell.removeFromTop (15));
+                    if (it.kind == 1) { it.comp->setBounds (cell.withSizeKeepingCentre (cell.getWidth() - 8, 26)); continue; }
                     const int size = juce::jmin (cell.getWidth() - 6, cell.getHeight());
                     it.comp->setBounds (cell.withSizeKeepingCentre (juce::jmax (54, size), cell.getHeight()));
                 }

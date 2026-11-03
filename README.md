@@ -16,6 +16,7 @@ C++ / JUCE 8. Von trockenmoos.
 | **KELTEN** | Synth | Carnyx-Kriegshorn (Growl, rasselnde Zunge), Bordun (Grundton + Quinte), Eisenzeit-Lo-Fi |
 | **RÖMER** | Synth | Hydraulis (Wasserorgel mit schwankendem Druck und Blubbern) + Cornu; Villa, Therme, Arena |
 | **GOISERER PASCHER** | Rhythmus | Gate + Klatscher-Gruppe im 16er-Raster, Dreivierteltakt-Muster, Swing, Mensch, Schmuggel |
+| **HAMMERSCHMIED** | Drum-Maschine | Generativ: 6 synthetische Spuren mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter |
 
 ## HALLSTATT
 Frühe Reflexionen je Raum (Flatterecho im Stollen, Felswand-Echos über dem See …) + 8-Kanal-Feedback-Delay-Netzwerk
@@ -67,10 +68,17 @@ Zwei Reihen à 16 Schritte (Gate, Klatschen) im Takt der DAW; Raster 1/8 bis 1/3
 Dreivierteltakte), Swing, Schmuggel (Schläge fallen weg oder kommen dazu). Gate: Tiefe, Glätten, Mix.
 Klatscher: Anzahl (1–6), Mensch (Timing-Streuung), Hände (Klangfarbe), Wirtshaus (Raum).
 
+## HAMMERSCHMIED
+Benannt nach der alten Hammerschmiede in Goisern. Sechs Spuren (Hammer, Amboss, Blasebalg, Esse, Funke, Zange), alle
+synthetisch. Jede Spur: Pegel, Ton, Abklingen, Schritte (2–32), Schläge, Drehung (Euklid-Muster), Chance und Tempo
+(1/2 … 2 × 16tel – Polymetrik). Werk: Frei (läuft auch ohne Transport), Swing, Chaos (Timing, Ratschen, Verstimmung),
+Mutation (Muster wandern Takt für Takt), Hitze (Sättigung). Glut: Granular-Wolke aus den letzten 3 Sekunden
+(Korn, Dichte, Tonhöhe, Rückwärts, Streuung) und Stotter-Wiederholungen. MIDI-Noten C1–F1 (36–41) spielen die Spuren.
+
 ## Gemeinsam
 - Werkspresets + eigene Presets (*SPEICHERN* → `Dokumente\trockenmoos\<PLUGIN> Presets`)
 - Hintergrund (*HINTERGRUND*): jede Landschaft der Serie in jedem Plugin (Moos, Hallstättersee am Abend, Holzrohr mit Salz,
-  Gletscher, Kalkwand, Wolkenmeer, Glasfenster, Almwiese, keltische Bronze, römisches Mosaik, Hirschleder) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
+  Gletscher, Kalkwand, Wolkenmeer, Glasfenster, Almwiese, keltische Bronze, römisches Mosaik, Hirschleder, geschmiedetes Eisen) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
 - Frei skalierbare Oberfläche
 
 ## Installation (Windows)
