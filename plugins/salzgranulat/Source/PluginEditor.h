@@ -33,7 +33,7 @@ public:
         };
 
         // Gitter: 5 x 5 x 5 Plätze
-        constexpr int N = 5;
+        static constexpr int N = 5;
         auto node = [] (int i) { return -1.0f + 2.0f * (float) i / (N - 1); };
         const float bondA = 0.06f + 0.22f * k;
         g.setColour (theme.text.withAlpha (bondA));
