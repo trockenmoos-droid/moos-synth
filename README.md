@@ -17,7 +17,7 @@ C++ / JUCE 8. Von trockenmoos.
 | **RÖMER** | Synth | Hydraulis (Wasserorgel mit schwankendem Druck und Blubbern) + Cornu; Villa, Therme, Arena |
 | **GOISERER PASCHER** | Rhythmus | Gate + Klatscher-Gruppe im 16er-Raster, Dreivierteltakt-Muster, Swing, Mensch, Schmuggel |
 | **SALZGRANULAT** | Granular | Kristall-Granulator: Körner wandern von freier Wolke (Sole) ins Gitter (Takt, Akkord, Raum); gestimmte Kristall-Resonatoren, Verdunstung, Rekristallisation, Freeze |
-| **HAMMERSCHMIED** | Drum-Maschine | Generativ: 6 Spuren (Synth oder eigene Samples) mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter; folgt DAW-Start/Stopp |
+| **HAMMERSCHMIED** | Drum-Maschine (Instrument) | Generativ: 6 Spuren (Synth oder eigene Samples) mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter; folgt DAW-Start/Stopp |
 
 ## HALLSTATT
 Frühe Reflexionen je Raum (Flatterecho im Stollen, Felswand-Echos über dem See …) + 8-Kanal-Feedback-Delay-Netzwerk

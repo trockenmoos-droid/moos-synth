@@ -26,10 +26,13 @@ target_include_directories(trockenmoos_common INTERFACE ${CMAKE_CURRENT_SOURCE_D
 
 # tm_add_plugin(<Target> <Produktname> <4-Zeichen-Code> <IS_SYNTH TRUE/FALSE> <Version> <Quellen...>)
 function(tm_add_plugin target product code is_synth version)
-    if(is_synth)
+    # Kategorie im Plugin-Browser der DAW: pro Plugin über TM_VST3_CATS (vor tm_add_plugin setzen)
+    if(DEFINED TM_VST3_CATS)
+        set(cats ${TM_VST3_CATS})
+    elseif(is_synth)
         set(cats Instrument Synth)
     else()
-        set(cats Fx Reverb Delay)
+        set(cats Fx)
     endif()
 
     juce_add_plugin(${target}
