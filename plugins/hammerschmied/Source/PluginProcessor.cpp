@@ -11,7 +11,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     using PI = juce::AudioParameterInt; using ID = juce::ParameterID;
     auto u8 = [] (const char* s) { return juce::String::fromUTF8 (s); };
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
-    p.push_back (std::make_unique<PB> (ID { "frei", 1 },        "Frei laufen", true));
+    p.push_back (std::make_unique<PB> (ID { "frei", 1 },        "Frei laufen (ohne DAW-Transport)", false));
     p.push_back (std::make_unique<P>  (ID { "swing", 1 },       "Swing", 0.0f, 0.7f, 0.0f));
     p.push_back (std::make_unique<P>  (ID { "chaos", 1 },       "Chaos", 0.0f, 1.0f, 0.25f));
     p.push_back (std::make_unique<P>  (ID { "mutation", 1 },    "Mutation", 0.0f, 1.0f, 0.3f));
@@ -43,6 +43,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         p.push_back (std::make_unique<PI> (ID { pid (t, "dreh"), 1 },   n + " Drehung", 0, 31, defRot[t]));
         p.push_back (std::make_unique<P>  (ID { pid (t, "chance"), 1 }, n + " Chance", 0.0f, 1.0f, defCh[t]));
         p.push_back (std::make_unique<PC> (ID { pid (t, "tempo"), 1 },  n + " Tempo", rates, defRate[t]));
+        p.push_back (std::make_unique<PC> (ID { pid (t, "quelle"), 1 }, n + " Quelle", sources, 0));
     }
     return { p.begin(), p.end() };
 }
@@ -92,8 +93,90 @@ HammerProcessor::HammerProcessor()
     {
         level[t] = get (pid (t, "lvl")); tune[t] = get (pid (t, "ton")); decay[t] = get (pid (t, "abk")); steps[t] = get (pid (t, "sch"));
         hitsP[t] = get (pid (t, "hit")); rotate[t] = get (pid (t, "dreh")); chance[t] = get (pid (t, "chance")); rate[t] = get (pid (t, "tempo"));
+        source[t] = get (pid (t, "quelle"));
     }
     pending.reserve (256);
+    formats.registerBasicFormats();
+}
+
+//==============================================================================
+// Samples
+bool HammerProcessor::isAudioFile (const juce::File& f)
+{
+    return f.existsAsFile() && f.hasFileExtension ("wav;aif;aiff;flac;ogg;mp3");
+}
+
+void HammerProcessor::setSampleInternal (int t, std::unique_ptr<SampleData> d)
+{
+    // altes Sample erst nach einer Weile freigeben – ein laufender Schlag könnte es noch lesen
+    const auto now = juce::Time::getMillisecondCounter();
+    retired.erase (std::remove_if (retired.begin(), retired.end(), [now] (const Retired& r) { return now - r.at > 20000; }), retired.end());
+    current[t] = d.get();
+    if (owner[t] != nullptr) retired.push_back ({ std::move (owner[t]), now });
+    owner[t] = std::move (d);
+    apvts.state.setProperty ("sample_" + juce::String (trackKeys[t]), owner[t] != nullptr ? owner[t]->file.getFullPathName() : juce::String(), nullptr);
+    ++sampleChanges;
+}
+
+juce::String HammerProcessor::loadSample (int t, const juce::File& file)
+{
+    if (! isAudioFile (file)) return "Keine Audiodatei: " + file.getFileName();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    if (reader == nullptr) return "Kann nicht gelesen werden: " + file.getFileName();
+    const auto len = (int) juce::jmin<juce::int64> (reader->lengthInSamples, (juce::int64) (reader->sampleRate * 10.0));   // höchstens 10 s
+    if (len < 16) return "Zu kurz: " + file.getFileName();
+    juce::AudioBuffer<float> tmp ((int) juce::jmin (2u, reader->numChannels), len);
+    reader->read (&tmp, 0, len, 0, true, tmp.getNumChannels() > 1);
+    auto d = std::make_unique<SampleData>();
+    d->data.setSize (1, len);
+    d->data.copyFrom (0, 0, tmp, 0, 0, len);
+    if (tmp.getNumChannels() > 1) { d->data.addFrom (0, 0, tmp, 1, 0, len); d->data.applyGain (0.5f); }   // Spur = Mono, Panorama kommt von der Spur
+    const float pk = d->data.getMagnitude (0, len);
+    if (pk > 1.0e-4f) d->data.applyGain (0.9f / pk);                        // auf gleiche Lautheit bringen
+    d->rate = reader->sampleRate;
+    d->name = file.getFileNameWithoutExtension();
+    d->file = file;
+    setSampleInternal (t, std::move (d));
+    // wer ein Sample lädt, will es hören
+    if (auto* q = apvts.getParameter (pid (t, "quelle")); q != nullptr && q->getValue() < 0.25f)
+        q->setValueNotifyingHost (q->convertTo0to1 (1.0f));
+    return {};
+}
+
+void HammerProcessor::clearSample (int t)
+{
+    setSampleInternal (t, nullptr);
+    if (auto* q = apvts.getParameter (pid (t, "quelle"))) q->setValueNotifyingHost (0.0f);
+}
+
+int HammerProcessor::loadKit (const juce::File& f, int firstTrack)
+{
+    const auto folder = f.isDirectory() ? f : f.getParentDirectory();
+    auto files = folder.findChildFiles (juce::File::findFiles, false);
+    files.sort();
+    int t = firstTrack, n = 0;
+    for (auto& file : files)
+    {
+        if (t >= numTracks) break;
+        if (isAudioFile (file) && loadSample (t, file).isEmpty()) { ++t; ++n; }
+    }
+    return n;
+}
+
+void HammerProcessor::stateRestored()
+{
+    for (int t = 0; t < numTracks; ++t)
+    {
+        const juce::File f (apvts.state.getProperty ("sample_" + juce::String (trackKeys[t])).toString());
+        const bool want = f.getFullPathName().isNotEmpty() && f.existsAsFile();
+        if (want && (owner[t] == nullptr || owner[t]->file != f))
+        {
+            const float q = apvts.getParameter (pid (t, "quelle"))->getValue();   // gespeicherte Quelle nicht überschreiben
+            loadSample (t, f);
+            apvts.getParameter (pid (t, "quelle"))->setValueNotifyingHost (q);
+        }
+        else if (f.getFullPathName().isEmpty() && owner[t] != nullptr) setSampleInternal (t, nullptr);
+    }
 }
 
 bool HammerProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -106,6 +189,7 @@ void HammerProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     sr = sampleRate;
     for (auto& tr : hits) for (auto& h : tr) h.active = false;
     pending.clear();
+    wasPlaying = false;
     freePpq = 0.0; lastBar = -1; lastBaseStep = -1;
     for (int t = 0; t < numTracks; ++t) { rotOff[t] = hitOff[t] = 0; }
     for (auto& r : rec) r.assign ((size_t) (sr * 3.0) + 8, 0.0f);
@@ -184,12 +268,27 @@ void HammerProcessor::trigger (int t, int, float vel)
             h.pan = -0.5f;
             break;
     }
+    // Quelle: Synth / Sample / Beide (ohne geladenes Sample bleibt es beim Synth)
+    const int src = (int) source[t]->load();
+    const SampleData* sd = src > 0 ? current[t].load() : nullptr;
+    h.synthOn = (src != 1 || sd == nullptr);
+    if (sd != nullptr)
+    {
+        h.smp = sd;
+        const double semis = tune[t]->load() * 12.0 + (chaos->load() * 0.6) * (rng.nextDouble() - 0.5);
+        h.sstep = sd->rate / sr * std::pow (2.0, semis / 12.0);
+        const bool reverse = rng.nextFloat() < chaos->load() * 0.15f;                   // Chaos: ab und zu rückwärts
+        if (reverse) { h.sstep = -h.sstep; h.spos = sd->data.getNumSamples() - 2.0; }
+        else h.spos = 0.0;
+        h.senv = 1.0f;
+        h.senvCoef = dc > 0.97f ? 1.0f : envFor (0.04f + dc * dc * 3.0f);
+        h.sgain = src == 2 ? 0.7f : 1.0f;
+    }
     hitFlash[t] = 1.0f;
 }
 
-float HammerProcessor::renderHit (Hit& h) noexcept
+float HammerProcessor::renderSynth (Hit& h, float n) noexcept
 {
-    const float n = rng.nextFloat() * 2.0f - 1.0f;
     float y = 0.0f;
     switch (h.type)
     {
@@ -253,8 +352,31 @@ float HammerProcessor::renderHit (Hit& h) noexcept
             break;
         }
     }
+    if (h.env < 1.0e-4f && h.noiseEnv < 1.0e-4f && h.age > 32) h.synthOn = false;
+    return y;
+}
+
+float HammerProcessor::renderHit (Hit& h) noexcept
+{
+    const float n = rng.nextFloat() * 2.0f - 1.0f;
+    float y = h.synthOn ? renderSynth (h, n) : 0.0f;
+    if (h.smp != nullptr)
+    {
+        const int len = h.smp->data.getNumSamples();
+        const int i0 = (int) h.spos;
+        if (i0 < 0 || i0 + 1 >= len || h.senv < 1.0e-4f) h.smp = nullptr;
+        else
+        {
+            const float* d = h.smp->data.getReadPointer (0);
+            const float fr = (float) (h.spos - i0);
+            const float fadeIn = juce::jmin (1.0f, (float) h.age / 24.0f);       // klickfrei, auch bei rückwärts
+            y += (d[i0] + fr * (d[i0 + 1] - d[i0])) * h.senv * h.sgain * fadeIn;
+            h.spos += h.sstep;
+            h.senv *= h.senvCoef;
+        }
+    }
     ++h.age;
-    if (h.env < 1.0e-4f && h.noiseEnv < 1.0e-4f && h.age > 32) h.active = false;
+    if (! h.synthOn && h.smp == nullptr) h.active = false;
     return y * (0.4f + 0.6f * h.vel);
 }
 
@@ -275,9 +397,25 @@ void HammerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             if (pos->getIsPlaying() && pos->getPpqPosition().hasValue()) { ppq = *pos->getPpqPosition(); playing = true; }
         }
     const double bps = bpm / 60.0 / sr;
-    const bool running = playing || frei->load() > 0.5f;
+    // DAW: folgt Start/Stopp. Frei (oder Standalone ohne Transport): läuft immer
+    const bool standalone = wrapperType == wrapperType_Standalone;
+    const bool running = playing || frei->load() > 0.5f || standalone;
+    if (playing && ! wasPlaying)
+    {
+        // Start: Muster von vorn, Mutation zurückgesetzt -> jeder Start klingt gleich
+        for (int t = 0; t < numTracks; ++t) { rotOff[t] = hitOff[t] = 0; rotOffset[t] = 0; hitOffset[t] = 0; }
+        lastBar = -1; lastBaseStep = -1; pending.clear(); stut.active = false;
+        justStarted = true;
+    }
+    if (! playing && wasPlaying && ! running)
+    {
+        // Stopp: keine neuen Schläge, Stotter aus – Klänge dürfen ausklingen
+        pending.clear(); stut.active = false;
+    }
     if (playing) ppq += chunkOffset * bps;
     else ppq = freePpq;
+    wasPlaying = playing;
+    runningNow = running;
 
     const float ch = chaos->load(), sw = swing->load(), mut = mutation->load();
     const float glutAmt = glut->load(), stotterP = stotter->load();
@@ -307,13 +445,15 @@ void HammerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             const int st = juce::jlimit (2, 32, (int) std::round (steps[t]->load()));
             const int hc = juce::jlimit (0, st, (int) std::round (hitsP[t]->load()) + hitOff[t]);
             const int ro = (int) std::round (rotate[t]->load()) + rotOff[t];
-            for (long long k = (long long) std::ceil (p0); (double) k < p1; ++k)
+            // direkt nach dem Start: einen gerade eben verpassten Schritt (DAWs starten oft minimal danach) noch mitnehmen
+            const double catchUp = justStarted ? 0.3 : 0.0;
+            for (long long k = (long long) std::ceil (p0 - catchUp); (double) k < p1; ++k)
             {
                 const int idx = (int) (((k % st) + st) % st);
                 curStep[t] = idx;
                 if (! euclid (idx, st, hc, ro)) continue;
                 if (rng.nextFloat() > chance[t]->load()) continue;
-                double off = (k * stepBeats - ppq) / bps;
+                double off = juce::jmax (0.0, (k * stepBeats - ppq) / bps);
                 if (k % 2 != 0) off += sw * stepSamples * 0.5;                                  // Swing
                 off += juce::jmax (0.0, (rng.nextDouble() - 0.3) * ch * stepSamples * 0.35);    // Chaos: Timing
                 const float vel = (idx == 0 ? 1.0f : 0.7f + 0.3f * rng.nextFloat()) * (1.0f - 0.3f * ch * rng.nextFloat());
@@ -328,6 +468,8 @@ void HammerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             }
         }
     }
+
+    justStarted = false;
 
     // MIDI: Noten C1..F1 (36-41) spielen die Spuren direkt
     for (const auto m : midi)
@@ -462,7 +604,7 @@ void HammerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     // ausstehende Schläge in den nächsten Block verschieben
     for (auto& e : pending) e.samples -= n;
     if (pending.size() > 200) pending.clear();
-    if (! playing) freePpq = ppq + n * bps;
+    freePpq = ppq + n * bps;                     // nach Stopp läuft „Frei“ nahtlos weiter
     stuttering = stut.active;
     for (auto& f : hitFlash) f = f.load() * 0.85f;
 

@@ -93,7 +93,12 @@ namespace tmk
         {
             if (! juce::isPositiveAndBelow (index, (int) factory.size())) return;
             currentProgram = index;
+            std::vector<std::pair<juce::RangedAudioParameter*, float>> kept;   // z. B. Sample-Quellen bleiben beim Presetwechsel
+            for (auto* p : getParameters())
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+                    if (keepOnPresetChange (r->getParameterID())) kept.push_back ({ r, r->getValue() });
             resetToDefaults();
+            for (auto& [r, v] : kept) r->setValueNotifyingHost (v);
             for (auto& [id, value] : factory[(size_t) index].values)
                 if (auto* r = apvts.getParameter (id))
                     r->setValueNotifyingHost (r->convertTo0to1 (value));
@@ -169,6 +174,7 @@ namespace tmk
 
     protected:
         virtual void stateRestored() {}
+        virtual bool keepOnPresetChange (const juce::String&) const { return false; }
         virtual void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) = 0;
         int chunkOffset = 0;                    // Position des aktuellen Häppchens im DAW-Block
         std::atomic<bool> needsReset { false };

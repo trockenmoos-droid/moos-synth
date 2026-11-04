@@ -77,6 +77,141 @@ private:
     tmk::Theme theme;
 };
 
+
+// Quelle einer Spur: Klick schaltet Synth -> Sample -> Beide
+class SourceButton : public juce::Component
+{
+public:
+    SourceButton (HammerProcessor& p, int track, const tmk::Theme& t)
+        : theme (t), param (*p.apvts.getParameter (hammer::pid (track, "quelle"))),
+          att (param, [this] (float) { repaint(); }, nullptr)
+    {
+        att.sendInitialUpdate();
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
+    void paint (juce::Graphics& g) override
+    {
+        const int v = index();
+        auto r = getLocalBounds().toFloat().withSizeKeepingCentre ((float) getWidth() - 4.0f, 26.0f);
+        g.setColour (v == 0 ? juce::Colour (0x40000000) : theme.accent.withAlpha (v == 1 ? 0.85f : 0.45f));
+        g.fillRoundedRectangle (r, 5.0f);
+        g.setColour (v == 0 ? theme.outline : theme.accent);
+        g.drawRoundedRectangle (r, 5.0f, 1.0f);
+        g.setColour (v == 1 ? juce::Colour (0xff160c04) : theme.text);
+        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.drawText (hammer::sources[v], r, juce::Justification::centred);
+    }
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        att.setValueAsCompleteGesture ((float) ((index() + 1) % 3));
+    }
+private:
+    int index() const { return juce::jlimit (0, 2, juce::roundToInt (param.convertFrom0to1 (param.getValue()))); }
+    tmk::Theme theme;
+    juce::RangedAudioParameter& param;
+    juce::ParameterAttachment att;
+};
+
+// Sample-Feld einer Spur: Klick öffnet Menü, Audiodateien oder Ordner können hineingezogen werden
+class SampleSlot : public juce::Component, public juce::FileDragAndDropTarget, private juce::Timer
+{
+public:
+    SampleSlot (HammerProcessor& p, int track, const tmk::Theme& t) : proc (p), tr (track), theme (t)
+    {
+        startTimerHz (4);
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
+    ~SampleSlot() override { stopTimer(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (2.0f);
+        const auto* sd = proc.sampleFor (tr);
+        g.setColour (dragOver ? theme.accent.withAlpha (0.35f) : juce::Colour (0x40000000));
+        g.fillRoundedRectangle (r, 5.0f);
+        g.setColour (sd != nullptr || dragOver ? theme.accent : theme.outline.withAlpha (0.8f));
+        if (sd != nullptr || dragOver) g.drawRoundedRectangle (r, 5.0f, 1.4f);
+        else
+        {
+            juce::Path p; p.addRoundedRectangle (r, 5.0f);
+            juce::Path d; const float dash[] = { 4.0f, 3.0f };
+            juce::PathStrokeType (1.0f).createDashedStroke (d, p, dash, 2);
+            g.fillPath (d);
+        }
+        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+        g.setColour (theme.dim);
+        g.drawText ("SAMPLE", r.removeFromTop (16.0f), juce::Justification::centred);
+        g.setFont (juce::FontOptions (11.0f));
+        g.setColour (sd != nullptr ? theme.text : theme.dim.withAlpha (0.7f));
+        g.drawFittedText (sd != nullptr ? sd->name : juce::String::fromUTF8 ("hierher ziehen\noder klicken"),
+                          r.reduced (3.0f, 1.0f).toNearestInt(), juce::Justification::centred, 3, 0.8f);
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        juce::PopupMenu m;
+        m.addItem (1, juce::String::fromUTF8 ("Sample laden\xe2\x80\xa6"));
+        m.addItem (2, juce::String::fromUTF8 ("Kit laden (Ordner \xe2\x86\x92 alle 6 Spuren)\xe2\x80\xa6"));
+        m.addItem (3, "Sample entfernen", proc.sampleFor (tr) != nullptr);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [this] (int id)
+        {
+            if (id == 1 || id == 2)
+            {
+                const auto start = proc.sampleFor (tr) != nullptr ? proc.sampleFor (tr)->file.getParentDirectory()
+                                                                   : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+                chooser = std::make_unique<juce::FileChooser> (id == 1 ? "Sample laden" : "Kit-Ordner oder eine Datei daraus", start,
+                                                               id == 1 ? "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3" : "*");
+                const int flags = juce::FileBrowserComponent::openMode
+                                | (id == 1 ? juce::FileBrowserComponent::canSelectFiles
+                                           : juce::FileBrowserComponent::canSelectDirectories | juce::FileBrowserComponent::canSelectFiles);
+                chooser->launchAsync (flags, [this, id] (const juce::FileChooser& fc)
+                {
+                    const auto f = fc.getResult();
+                    if (f == juce::File()) return;
+                    if (id == 1) proc.loadSample (tr, f);
+                    else proc.loadKit (f, 0);
+                    repaint();
+                });
+            }
+            else if (id == 3) { proc.clearSample (tr); repaint(); }
+        });
+    }
+
+    bool isInterestedInFileDrag (const juce::StringArray& files) override
+    {
+        for (auto& f : files) if (HammerProcessor::isAudioFile (juce::File (f)) || juce::File (f).isDirectory()) return true;
+        return false;
+    }
+    void fileDragEnter (const juce::StringArray&, int, int) override { dragOver = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override { dragOver = false; repaint(); }
+    void filesDropped (const juce::StringArray& files, int, int) override
+    {
+        dragOver = false;
+        if (files.size() == 1 && juce::File (files[0]).isDirectory()) proc.loadKit (juce::File (files[0]), tr);
+        else
+        {
+            // mehrere Dateien: diese Spur und die folgenden
+            int t = tr;
+            for (auto& f : files)
+                if (t < hammer::numTracks && proc.loadSample (t, juce::File (f)).isEmpty()) ++t;
+        }
+        repaint();
+    }
+
+private:
+    void timerCallback() override
+    {
+        const int c = proc.sampleChanges.load();
+        if (c != seen) { seen = c; repaint(); }
+    }
+    HammerProcessor& proc;
+    const int tr;
+    tmk::Theme theme;
+    bool dragOver = false;
+    int seen = -1;
+    std::unique_ptr<juce::FileChooser> chooser;
+};
+
 class HammerEditor : public tmk::Editor
 {
 public:
@@ -86,4 +221,6 @@ private:
     void layoutBody (juce::Rectangle<int> body) override;
     static tmk::Editor::Config makeConfig();
     ForgeRings rings;
+    std::vector<std::unique_ptr<SampleSlot>> slots;
+    std::vector<std::unique_ptr<SourceButton>> sourceButtons;
 };

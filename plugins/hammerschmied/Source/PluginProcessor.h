@@ -2,6 +2,7 @@
 
 #include <tm/TmProcessor.h>
 #include <tm/TmVoices.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 
 // HAMMERSCHMIED – generative Drum-Maschine (benannt nach der alten Hammerschmiede in Goisern).
 // Sechs Spuren mit Schmiede-Klängen, jede mit eigenem euklidischem Muster und eigenem Tempo
@@ -12,6 +13,7 @@ namespace hammer
     constexpr int numTracks = 6;
     inline const char* trackNames[numTracks] = { "HAMMER", "AMBOSS", "BLASEBALG", "ESSE", "FUNKE", "ZANGE" };
     inline const char* trackKeys[numTracks]  = { "t1", "t2", "t3", "t4", "t5", "t6" };
+    inline const juce::StringArray sources { "Synth", "Sample", "Beide" };
     inline const juce::StringArray rates { "1/2", "2/3", "3/4", "1", "4/3", "3/2", "2" };
     inline double rateFactor (int i) { const double v[] = { 0.5, 2.0 / 3.0, 0.75, 1.0, 4.0 / 3.0, 1.5, 2.0 }; return v[juce::jlimit (0, 6, i)]; }
     inline juce::String pid (int track, const char* p) { return juce::String (trackKeys[track]) + p; }
@@ -36,6 +38,16 @@ public:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
+
+    // --- Samples (nur vom Message-Thread aufrufen) ---
+    struct SampleData { juce::AudioBuffer<float> data; double rate = 48000.0; juce::String name; juce::File file; };
+    juce::String loadSample (int track, const juce::File& file);     // leer = OK, sonst Fehlermeldung
+    void clearSample (int track);
+    int loadKit (const juce::File& folderOrFirstFile, int firstTrack = 0);
+    const SampleData* sampleFor (int track) const { return current[track].load(); }
+    static bool isAudioFile (const juce::File& f);
+    std::atomic<int> sampleChanges { 0 };
+    bool isRunning() const { return runningNow.load(); }
     bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 3.0; }
@@ -58,11 +70,27 @@ public:
         float env = 1.0f, envCoef = 0.999f, noiseEnv = 0.0f, noiseCoef = 0.99f;
         float fmRatio = 1.4f, fmIndex = 2.0f, fmCoef = 0.999f;
         tmk::dsp::Svf f1, f2;
+        bool synthOn = true;
+        const SampleData* smp = nullptr;
+        double spos = 0.0, sstep = 1.0;
+        float senv = 1.0f, senvCoef = 1.0f, sgain = 1.0f;
     };
 
 private:
     void trigger (int track, int offset, float vel);
     float renderHit (Hit& h) noexcept;
+    float renderSynth (Hit& h, float n) noexcept;
+    void stateRestored() override;
+    bool keepOnPresetChange (const juce::String& id) const override { return id.endsWith ("quelle"); }
+    void setSampleInternal (int track, std::unique_ptr<SampleData> d);
+
+    juce::AudioFormatManager formats;
+    std::atomic<const SampleData*> current[hammer::numTracks] {};
+    std::unique_ptr<SampleData> owner[hammer::numTracks];                  // aktuelle Samples (Message-Thread besitzt sie)
+    struct Retired { std::unique_ptr<SampleData> d; juce::uint32 at; };
+    std::vector<Retired> retired;
+    bool wasPlaying = false, justStarted = false;
+    std::atomic<bool> runningNow { false };
 
     double sr = 48000.0;
     juce::Random rng;
@@ -94,5 +122,6 @@ private:
     AF frei{}, swing{}, chaos{}, mutation{}, hitze{}, volume{};
     AF glut{}, korn{}, dichte{}, tonhoehe{}, rueckwaerts{}, stotter{}, streuung{};
     AF level[hammer::numTracks]{}, tune[hammer::numTracks]{}, decay[hammer::numTracks]{}, steps[hammer::numTracks]{},
-       hitsP[hammer::numTracks]{}, rotate[hammer::numTracks]{}, chance[hammer::numTracks]{}, rate[hammer::numTracks]{};
+       hitsP[hammer::numTracks]{}, rotate[hammer::numTracks]{}, chance[hammer::numTracks]{}, rate[hammer::numTracks]{},
+       source[hammer::numTracks]{};
 };

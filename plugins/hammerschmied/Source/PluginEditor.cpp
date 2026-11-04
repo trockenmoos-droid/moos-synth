@@ -22,7 +22,7 @@ tmk::Editor::Config HammerEditor::makeConfig()
     c.textureName = "hammerschmied";
     c.texture = [] { return tmk::tex::forgedIron(); };
     c.theme = forgeTheme();
-    c.width = 1240; c.height = 820;
+    c.width = 1400; c.height = 840;
     return c;
 }
 
@@ -37,16 +37,21 @@ HammerEditor::HammerEditor (HammerProcessor& p)
     for (int t = 0; t < hammer::numTracks; ++t)
     {
         using namespace hammer;
-        addSection (u8 (trackNames[t]), { knob (pid (t, "lvl"), "Pegel"), knob (pid (t, "ton"), "Ton"), knob (pid (t, "abk"), "Abkl."),
+        slots.push_back (std::make_unique<SampleSlot> (p, t, cfg.theme));
+        sourceButtons.push_back (std::make_unique<SourceButton> (p, t, cfg.theme));
+        auto srcItem = custom (*sourceButtons.back(), 1.0f);
+        srcItem.label = makeLabel ("Quelle");
+        addSection (u8 (trackNames[t]), { srcItem, knob (pid (t, "lvl"), "Pegel"), knob (pid (t, "ton"), "Ton"),
+                                          knob (pid (t, "abk"), "Abkl."), knob (pid (t, "chance"), "Chance"),
                                           knob (pid (t, "sch"), "Schritte"), knob (pid (t, "hit"), u8 ("Schl\xc3\xa4ge")), knob (pid (t, "dreh"), "Drehung"),
-                                          knob (pid (t, "chance"), "Chance"), combo (pid (t, "tempo"), "Tempo", 1.2f) }).columns = 4;
+                                          combo (pid (t, "tempo"), "Tempo", 1.0f), custom (*slots.back(), 1.0f) }).columns = 5;
     }
     finishSetup();
 }
 
 void HammerEditor::layoutBody (juce::Rectangle<int> body)
 {
-    auto left = body.removeFromLeft (body.getWidth() * 30 / 100);
+    auto left = body.removeFromLeft (body.getWidth() * 27 / 100);
     layoutSection ("SCHMIEDE", left);
     auto top = body.removeFromTop (body.getHeight() * 22 / 100);
     auto t2 = split (top, { 6, 7 });

@@ -16,7 +16,7 @@ C++ / JUCE 8. Von trockenmoos.
 | **KELTEN** | Synth | Carnyx-Kriegshorn (Growl, rasselnde Zunge), Bordun (Grundton + Quinte), Eisenzeit-Lo-Fi |
 | **RÖMER** | Synth | Hydraulis (Wasserorgel mit schwankendem Druck und Blubbern) + Cornu; Villa, Therme, Arena |
 | **GOISERER PASCHER** | Rhythmus | Gate + Klatscher-Gruppe im 16er-Raster, Dreivierteltakt-Muster, Swing, Mensch, Schmuggel |
-| **HAMMERSCHMIED** | Drum-Maschine | Generativ: 6 synthetische Spuren mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter |
+| **HAMMERSCHMIED** | Drum-Maschine | Generativ: 6 Spuren (Synth oder eigene Samples) mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter; folgt DAW-Start/Stopp |
 
 ## HALLSTATT
 Frühe Reflexionen je Raum (Flatterecho im Stollen, Felswand-Echos über dem See …) + 8-Kanal-Feedback-Delay-Netzwerk
@@ -70,8 +70,12 @@ Klatscher: Anzahl (1–6), Mensch (Timing-Streuung), Hände (Klangfarbe), Wirtsh
 
 ## HAMMERSCHMIED
 Benannt nach der alten Hammerschmiede in Goisern. Sechs Spuren (Hammer, Amboss, Blasebalg, Esse, Funke, Zange), alle
-synthetisch. Jede Spur: Pegel, Ton, Abklingen, Schritte (2–32), Schläge, Drehung (Euklid-Muster), Chance und Tempo
-(1/2 … 2 × 16tel – Polymetrik). Werk: Frei (läuft auch ohne Transport), Swing, Chaos (Timing, Ratschen, Verstimmung),
+synthetisch – oder mit eigenen Samples. Jede Spur: Quelle (Synth / Sample / Beide), Pegel, Ton, Abklingen, Schritte (2–32), Schläge, Drehung (Euklid-Muster), Chance und Tempo
+(1/2 … 2 × 16tel – Polymetrik). Samples: ins SAMPLE-Feld ziehen oder klicken (WAV/AIFF/FLAC/OGG/MP3, max. 10 s);
+ein Ordner oder mehrere Dateien füllen die Spuren der Reihe nach („Kit laden“). Ton = ±12 Halbtöne, Abklingen ganz
+rechts = ganzes Sample. Samples bleiben beim Presetwechsel, werden im DAW-Projekt und in eigenen Presets (als Pfad)
+gespeichert. Takt: folgt Start/Stopp der DAW, jeder Start beginnt bei Takt 1 mit unmutiertem Muster.
+Werk: Frei (läuft auch ohne DAW-Transport; im Standalone immer), Swing, Chaos (Timing, Ratschen, Verstimmung),
 Mutation (Muster wandern Takt für Takt), Hitze (Sättigung). Glut: Granular-Wolke aus den letzten 3 Sekunden
 (Korn, Dichte, Tonhöhe, Rückwärts, Streuung) und Stotter-Wiederholungen. MIDI-Noten C1–F1 (36–41) spielen die Spuren.
 
