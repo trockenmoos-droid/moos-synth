@@ -83,7 +83,8 @@ void HallstattProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBu
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
     if (wet.getNumSamples() < n) { wet.setSize (2, n, false, false, true); fdnIn.setSize (2, n, false, false, true); fdnOut.setSize (2, n, false, false, true); }
-    if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
+    if (getTotalNumInputChannels() == 0) buffer.clear();
+    else if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
 
     const int r = juce::jlimit (0, (int) rooms().size() - 1, (int) room->load());
     const auto& rm = rooms()[(size_t) r];

@@ -94,7 +94,8 @@ void SoleleitungProcessor::process (juce::AudioBuffer<float>& buffer, juce::Midi
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
-    if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
+    if (getTotalNumInputChannels() == 0) buffer.clear();
+    else if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
 
     // Verzögerungszeit
     const double ms = sync->load() > 0.5f ? sole::divisionBeats ((int) division->load()) * 60000.0 / readBpm()

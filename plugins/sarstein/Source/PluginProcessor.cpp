@@ -74,7 +74,8 @@ void SarsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
-    if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
+    if (getTotalNumInputChannels() == 0) buffer.clear();
+    else if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
     if (dry.getNumSamples() < n) dry.setSize (2, n, false, false, true);
     for (int c = 0; c < 2; ++c) dry.copyFrom (c, 0, buffer, c, 0, n);
 

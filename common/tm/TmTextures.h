@@ -1052,6 +1052,83 @@ namespace tmk::tex
         return img;
     }
 
+
+    // SALZGRANULAT: Steinsalz-Kristalle (Würfel) in Weiß und Rosa auf dunklem Schiefer, dazu feines Salzkorn
+    inline juce::Image saltCrystals()
+    {
+        RGB px;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+            {
+                const float fx = (float) x, fy = (float) y;
+                const float n = fbm (fx / 260.0f, fy / 260.0f, 5, 21);
+                juce::Colour c = juce::Colour (0xff0c0f17).interpolatedWith (juce::Colour (0xff2a3040), n);
+                const float speck = fbm (fx / 2.5f, fy / 2.5f, 1, 22);
+                if (speck > 0.78f) c = c.interpolatedWith (juce::Colour (0xffe8eef4), (speck - 0.78f) * 3.0f);
+                px.set (x, y, c);
+            }
+        auto img = px.toImage();
+        juce::Graphics g (img);
+        juce::Random rnd (1595);
+        // Würfel: drei sichtbare Flächen mit unterschiedlicher Helligkeit, leicht durchscheinend
+        auto cube = [&] (float cx, float cy, float s, float rot, juce::Colour base, float alpha)
+        {
+            const float tilt = 0.55f;
+            auto pt = [&] (float x, float y, float z)
+            {
+                const float xr = x * std::cos (rot) - z * std::sin (rot), zr = x * std::sin (rot) + z * std::cos (rot);
+                return juce::Point<float> (cx + xr * s, cy + (y * std::cos (tilt) + zr * std::sin (tilt)) * s);
+            };
+            juce::Path top, left, right;
+            top.startNewSubPath (pt (-1, -1, -1)); top.lineTo (pt (1, -1, -1)); top.lineTo (pt (1, -1, 1)); top.lineTo (pt (-1, -1, 1)); top.closeSubPath();
+            left.startNewSubPath (pt (-1, -1, 1)); left.lineTo (pt (1, -1, 1)); left.lineTo (pt (1, 1, 1)); left.lineTo (pt (-1, 1, 1)); left.closeSubPath();
+            right.startNewSubPath (pt (1, -1, -1)); right.lineTo (pt (1, -1, 1)); right.lineTo (pt (1, 1, 1)); right.lineTo (pt (1, 1, -1)); right.closeSubPath();
+            g.setColour (juce::Colour (0x60000000)); g.fillPath (left, juce::AffineTransform::translation (s * 0.15f, s * 0.2f));
+            // durchscheinend: Verlauf über jede Fläche, dazu innere Lichtbrechung
+            auto faceFill = [&] (const juce::Path& f, float bright)
+            {
+                auto b = f.getBounds();
+                g.setGradientFill (juce::ColourGradient (base.withMultipliedBrightness (bright * 1.15f).withAlpha (alpha), b.getX(), b.getY(),
+                                                         base.withMultipliedBrightness (bright * 0.55f).withAlpha (alpha * 0.7f), b.getRight(), b.getBottom(), false));
+                g.fillPath (f);
+            };
+            faceFill (left, 0.62f); faceFill (right, 0.82f); faceFill (top, 1.0f);
+            // Stufen-Wachstum (Trichterkristall) auf der Oberseite
+            for (float f : { 0.7f, 0.45f, 0.22f })
+            {
+                juce::Path step;
+                step.startNewSubPath (pt (-f, -1, -f)); step.lineTo (pt (f, -1, -f)); step.lineTo (pt (f, -1, f)); step.lineTo (pt (-f, -1, f)); step.closeSubPath();
+                g.setColour (juce::Colours::white.withAlpha (0.12f * alpha));
+                g.strokePath (step, juce::PathStrokeType (1.2f));
+            }
+            g.setColour (juce::Colours::white.withAlpha (0.55f * alpha));
+            g.strokePath (top, juce::PathStrokeType (1.4f));
+            g.setColour (juce::Colours::white.withAlpha (0.18f * alpha));
+            g.strokePath (left, juce::PathStrokeType (1.0f)); g.strokePath (right, juce::PathStrokeType (1.0f));
+            // Glanzpunkt an der vorderen oberen Ecke
+            if (s > 14.0f)
+            {
+                const auto gp = pt (1, -1, 1);
+                const float gs = s * 0.35f;
+                g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.9f * alpha), gp.x, gp.y,
+                                                         juce::Colours::white.withAlpha (0.0f), gp.x + gs, gp.y, true));
+                g.fillEllipse (juce::Rectangle<float> (gs * 2.0f, gs * 2.0f).withCentre (gp));
+                juce::Path star; star.addStar (gp, 4, gs * 0.06f, gs * 0.9f, rnd.nextFloat());
+                g.setColour (juce::Colours::white.withAlpha (0.8f * alpha)); g.fillPath (star);
+            }
+        };
+        for (int i = 0; i < 300; ++i)
+        {
+            const float yN = std::pow (rnd.nextFloat(), 0.7f);                         // unten mehr, größere Kristalle
+            const float s = 5.0f + std::pow (rnd.nextFloat(), 2.5f) * 85.0f * (0.35f + yN);
+            const bool pink = rnd.nextFloat() < 0.35f;
+            const auto base = pink ? juce::Colour (0xffe7a9b6).interpolatedWith (juce::Colour (0xffc77a8c), rnd.nextFloat())
+                                   : juce::Colour (0xffeef2f6).interpolatedWith (juce::Colour (0xffb8c4d0), rnd.nextFloat() * 0.6f);
+            cube (rnd.nextFloat() * W, yN * H, s, rnd.nextFloat() * 1.57f, base, 0.45f + 0.5f * rnd.nextFloat());
+        }
+        return img;
+    }
+
     struct Landscape { const char* key; const char* label; std::function<juce::Image()> make; };
     inline const std::vector<Landscape>& landscapes()
     {
@@ -1068,6 +1145,7 @@ namespace tmk::tex
             { "roemer",        "R\xc3\xb6misches Mosaik (R\xc3\x96MER)",  [] { return romanMosaic(); } },
             { "pascher",       "Hirschleder (GOISERER PASCHER)",         [] { return leather(); } },
             { "hammerschmied", "Geschmiedetes Eisen (HAMMERSCHMIED)",   [] { return forgedIron(); } },
+            { "salzgranulat",  "Steinsalz-Kristalle (SALZGRANULAT)",    [] { return saltCrystals(); } },
         };
         return l;
     }

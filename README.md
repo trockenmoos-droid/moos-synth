@@ -16,6 +16,7 @@ C++ / JUCE 8. Von trockenmoos.
 | **KELTEN** | Synth | Carnyx-Kriegshorn (Growl, rasselnde Zunge), Bordun (Grundton + Quinte), Eisenzeit-Lo-Fi |
 | **RÖMER** | Synth | Hydraulis (Wasserorgel mit schwankendem Druck und Blubbern) + Cornu; Villa, Therme, Arena |
 | **GOISERER PASCHER** | Rhythmus | Gate + Klatscher-Gruppe im 16er-Raster, Dreivierteltakt-Muster, Swing, Mensch, Schmuggel |
+| **SALZGRANULAT** | Granular | Kristall-Granulator: Körner wandern von freier Wolke (Sole) ins Gitter (Takt, Akkord, Raum); gestimmte Kristall-Resonatoren, Verdunstung, Rekristallisation, Freeze |
 | **HAMMERSCHMIED** | Drum-Maschine | Generativ: 6 Spuren (Synth oder eigene Samples) mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter; folgt DAW-Start/Stopp |
 
 ## HALLSTATT
@@ -79,10 +80,20 @@ Werk: Frei (läuft auch ohne DAW-Transport; im Standalone immer), Swing, Chaos (
 Mutation (Muster wandern Takt für Takt), Hitze (Sättigung). Glut: Granular-Wolke aus den letzten 3 Sekunden
 (Korn, Dichte, Tonhöhe, Rückwärts, Streuung) und Stotter-Wiederholungen. MIDI-Noten C1–F1 (36–41) spielen die Spuren.
 
+## SALZGRANULAT
+Granular-Effekt mit 12 s „Salzlager“. Körner: Korngröße, Dichte, Tiefe (wie weit zurück), Streuung, Rückwärts.
+Kristall: stufenlos von Sole (Körner zufällig in Zeit, Tonhöhe, Raum) zu Kristall (Körner auf dem DAW-Taktraster,
+Tonhöhen auf Gittertöne – Oktaven, Quinten, Dur, Moll, Pentatonik, Ganzton, Cluster –, Panorama auf 5 Plätzen,
+Lesepositionen auf ganzen Schlägen, kantige Hüllkurven). Lage = Tonhöhenbereich ±0–24 HT. Klang: jedes Korn erregt einen
+auf Grundton + Gitterton gestimmten Kristall-Resonator. Verdunstung: Körner gleiten während ihrer Dauer bis zu einer
+Oktave hinauf (oder hinab). Rekristallisation: der Nassanteil fällt zurück ins Lager (trocknet ohne Eingang nach 3 s aus).
+Anschlag: Transienten werfen sofort eine Handvoll Körner. Salzkruste: Lager einfrieren. Anzeige: rotierendes
+Kochsalz-Gitter, jedes Korn ein Lichtpunkt (x Raum, y Tonhöhe, z Tiefe), mit der Maus drehbar.
+
 ## Gemeinsam
 - Werkspresets + eigene Presets (*SPEICHERN* → `Dokumente\trockenmoos\<PLUGIN> Presets`)
 - Hintergrund (*HINTERGRUND*): jede Landschaft der Serie in jedem Plugin (Moos, Hallstättersee am Abend, Holzrohr mit Salz,
-  Gletscher, Kalkwand, Wolkenmeer, Glasfenster, Almwiese, keltische Bronze, römisches Mosaik, Hirschleder, geschmiedetes Eisen) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
+  Gletscher, Kalkwand, Wolkenmeer, Glasfenster, Almwiese, keltische Bronze, römisches Mosaik, Hirschleder, geschmiedetes Eisen, Steinsalz-Kristalle) oder ein eigenes Foto; dazu „Durchsicht der Felder“ (wenig/mittel/viel)
 - Frei skalierbare Oberfläche
 
 ## Installation (Windows)

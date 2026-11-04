@@ -115,7 +115,8 @@ void FingersProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
-    if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
+    if (getTotalNumInputChannels() == 0) buffer.clear();
+    else if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
 
     const double ms = sync->load() > 0.5f ? divisionBeats ((int) division->load()) * 60000.0 / readBpm() : (double) timeMs->load();
     baseSm.setTargetValue ((float) juce::jlimit (10.0, sr * 4.5, ms * 0.001 * sr));
