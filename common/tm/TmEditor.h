@@ -165,6 +165,7 @@ namespace tmk
 
     protected:
         using APVTS = juce::AudioProcessorValueTreeState;
+        juce::MidiKeyboardComponent* getKeyboard() { return keyboard.get(); }
 
         struct Item
         {
@@ -187,6 +188,24 @@ namespace tmk
         // --- von Unterklassen zu überschreiben ---
         virtual void layoutBody (juce::Rectangle<int> body) = 0;
         virtual void paintOverlay (juce::Graphics&) {}
+        // eigene Optik: true zurückgeben, wenn die Unterklasse selbst gezeichnet hat
+        virtual bool paintSection (juce::Graphics&, juce::Rectangle<float>, const juce::String&) { return false; }
+        virtual bool paintKeyboardFrame (juce::Graphics&, juce::Rectangle<float>) { return false; }
+        virtual void paintHeader (juce::Graphics& g, juce::Rectangle<float> full)
+        {
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xc0050505), 0, 0, juce::Colour (0x00050505), 0, 70, false));
+            g.fillRect (full.withHeight (70));
+
+            g.setColour (cfg.theme.accent);
+            g.setFont (juce::FontOptions (28.0f, juce::Font::bold));
+            const int tw = titleTextWidth();
+            g.drawText (cfg.title, 18, 10, tw, 40, juce::Justification::centredLeft);
+            g.setColour (cfg.theme.text.withAlpha (0.7f));
+            g.setFont (juce::FontOptions (10.5f));
+            g.drawText (cfg.subtitle, 20 + tw, 14, 110, 16, juce::Justification::centredLeft);
+            g.drawText ("trockenmoos audio", 20 + tw, 28, 110, 16, juce::Justification::centredLeft);
+
+        }
         virtual void pageChanged (int) {}
         virtual void tick() {}
 
@@ -365,22 +384,13 @@ namespace tmk
             if (bgImage.isValid()) g.drawImage (bgImage, full, juce::RectanglePlacement::fillDestination);
             else                   g.fillAll (cfg.theme.bg);
 
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xc0050505), 0, 0, juce::Colour (0x00050505), 0, 70, false));
-            g.fillRect (full.withHeight (70));
-
-            g.setColour (cfg.theme.accent);
-            g.setFont (juce::FontOptions (28.0f, juce::Font::bold));
-            const int tw = titleTextWidth();
-            g.drawText (cfg.title, 18, 10, tw, 40, juce::Justification::centredLeft);
-            g.setColour (cfg.theme.text.withAlpha (0.7f));
-            g.setFont (juce::FontOptions (10.5f));
-            g.drawText (cfg.subtitle, 20 + tw, 14, 110, 16, juce::Justification::centredLeft);
-            g.drawText ("trockenmoos audio", 20 + tw, 28, 110, 16, juce::Justification::centredLeft);
+            paintHeader (g, full);
 
             for (auto& s : sections)
             {
                 if (! (s.page < 0 || s.page == currentPage) || s.bounds.isEmpty()) continue;
                 auto b = s.bounds.toFloat().reduced (4.0f);
+                if (paintSection (g, b, s.title)) continue;
                 {
                     juce::Graphics::ScopedSaveState ss (g);
                     juce::Path clip;
@@ -397,7 +407,7 @@ namespace tmk
                 g.drawText (s.title, b.reduced (12.0f, 7.0f).toNearestInt(), juce::Justification::topLeft);
             }
 
-            if (keyboard != nullptr)
+            if (keyboard != nullptr && ! paintKeyboardFrame (g, keyboard->getBounds().toFloat()))
             {
                 g.setColour (juce::Colour (0xa0000000));
                 g.fillRoundedRectangle (keyboard->getBounds().toFloat().expanded (3.0f), 4.0f);

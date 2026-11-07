@@ -16,6 +16,7 @@ C++ / JUCE 8. Von trockenmoos.
 | **KELTEN** | Synth | Carnyx-Kriegshorn (Growl, rasselnde Zunge), Bordun (Grundton + Quinte), Eisenzeit-Lo-Fi |
 | **RÖMER** | Synth | Hydraulis (Wasserorgel mit schwankendem Druck und Blubbern) + Cornu; Villa, Therme, Arena |
 | **GOISERER PASCHER** | Rhythmus | Gate + Klatscher-Gruppe im 16er-Raster, Dreivierteltakt-Muster, Swing, Mensch, Schmuggel |
+| **TUSCHE** | Granular-Sampler | 16 Striche (Chops) mit eigener Position/Korn/Dichte/Chaos/Raum/Tonhöhe, Halten/Schritt/Tasten, eigenes Sample, Oberfläche aus Christophs Tuschezeichnungen |
 | **SALZGRANULAT** | Granular | Kristall-Granulator: Körner wandern von freier Wolke (Sole) ins Gitter (Takt, Akkord, Raum); gestimmte Kristall-Resonatoren, Verdunstung, Rekristallisation, Freeze |
 | **HAMMERSCHMIED** | Drum-Maschine (Instrument) | Generativ: 6 Spuren (Synth oder eigene Samples) mit Euklid-Rhythmen, eigene Tempi, Chaos, Mutation, Granular-„Glut“ und Stotter; folgt DAW-Start/Stopp |
 
@@ -79,6 +80,17 @@ gespeichert. Takt: folgt Start/Stopp der DAW, jeder Start beginnt bei Takt 1 mit
 Werk: Frei (läuft auch ohne DAW-Transport; im Standalone immer), Swing, Chaos (Timing, Ratschen, Verstimmung),
 Mutation (Muster wandern Takt für Takt), Hitze (Sättigung). Glut: Granular-Wolke aus den letzten 3 Sekunden
 (Korn, Dichte, Tonhöhe, Rückwärts, Streuung) und Stotter-Wiederholungen. MIDI-Noten C1–F1 (36–41) spielen die Spuren.
+
+## TUSCHE
+Granular-Sampler. Quelle: vier eingebaute Klänge (Klavier, Glas, Chor, Holz) oder ein eigenes Sample (in die Anzeige
+ziehen oder LADEN, bis 60 s). Das Sample wird in 16 „Striche“ geteilt, jeder mit eigener Position, Korngröße, Dichte
+(mit Sync als Notenwert, sonst Hz), Chaos (Streuung, Stereo, Rückwärts, Oktavsprünge), Raum (Hall-Anteil) und Tonhöhe.
+Regler-Verknüpfung „ALLE“ setzt einen Wert auf allen Strichen. Striche: Klick wählt, Umschalt+Klick an/aus, Rechtsklick
+kopieren / einfügen (alles oder einzelne Werte) / auf alle / zufällig. Klick in die Wellenform setzt die Position.
+Modi: Halten (gewählter Strich chromatisch, gehalten – neuer Akkord ersetzt den alten), Schritt (Sequenzer im DAW-Takt
+durch die 16 Striche, Taste transponiert, ohne DAW läuft er solange eine Taste gedrückt ist), Tasten (C3 = Strich 1 …
+D#4 = Strich 16). Dazu Wandern (Position läuft), ADSR, Hoch-/Tiefpass mit Resonanz, Hall. Die Oberfläche verwendet
+Ausschnitte aus Christophs Tuschezeichnungen (Papier + fünf Blätter als Grund der Anzeige, „BLATT“ wechselt).
 
 ## SALZGRANULAT
 Granular-Effekt mit 12 s „Salzlager“. Körner: Korngröße, Dichte, Tiefe (wie weit zurück), Streuung, Rückwärts.

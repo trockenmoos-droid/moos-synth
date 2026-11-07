@@ -100,7 +100,7 @@ namespace tmk
             resetToDefaults();
             for (auto& [r, v] : kept) r->setValueNotifyingHost (v);
             for (auto& [id, value] : factory[(size_t) index].values)
-                if (auto* r = apvts.getParameter (id))
+                if (auto* r = apvts.getParameter (id); r != nullptr && ! keepOnPresetChange (r->getParameterID()))
                     r->setValueNotifyingHost (r->convertTo0to1 (value));
             apvts.state.setProperty ("presetName", juce::String::fromUTF8 (factory[(size_t) index].name), nullptr);
             ++presetChangeCounter;
