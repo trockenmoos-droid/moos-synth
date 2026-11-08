@@ -127,7 +127,7 @@ void HallstattProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBu
     {
         float rp = (float) preW - delay;
         while (rp < 0.0f) rp += (float) preSize;
-        const int i0 = (int) rp;
+        const int i0 = juce::jlimit (0, preSize - 1, (int) rp);
         const int i1 = (i0 + 1) % preSize;
         const float fr = rp - (float) i0;
         return pre[ch][(size_t) i0] + fr * (pre[ch][(size_t) i1] - pre[ch][(size_t) i0]);

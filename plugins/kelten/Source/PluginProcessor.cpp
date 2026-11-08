@@ -137,7 +137,7 @@ void KeltenProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             wowBuf[c][(size_t) wowW] = ch[c][i];
             float rp = (float) wowW - d;
             while (rp < 0.0f) rp += (float) wsz;
-            const int i0 = (int) rp, i1 = (i0 + 1) % wsz;
+            const int i0 = juce::jlimit (0, wsz - 1, (int) rp), i1 = (i0 + 1) % wsz;
             const float fr = rp - (float) i0;
             float x = age > 0.001f ? wowBuf[c][(size_t) i0] + fr * (wowBuf[c][(size_t) i1] - wowBuf[c][(size_t) i0]) : ch[c][i];
             ageLp[c] = x + aAge * (ageLp[c] - x); x = ageLp[c];

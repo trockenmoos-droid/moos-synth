@@ -129,7 +129,7 @@ namespace tmk
                 const int size = (int) buf.size();
                 float rp = (float) w - delay;
                 while (rp < 0.0f) rp += (float) size;
-                const int i0 = (int) rp;
+                const int i0 = juce::jlimit (0, size - 1, (int) rp);   // Rundung beim Umklappen kann genau "size" ergeben
                 const int i1 = i0 + 1 >= size ? 0 : i0 + 1;
                 const float fr = rp - (float) i0;
                 return buf[(size_t) i0] + fr * (buf[(size_t) i1] - buf[(size_t) i0]);

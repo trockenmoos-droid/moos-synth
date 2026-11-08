@@ -100,7 +100,7 @@ float FingersProcessor::readCh (int ch, double delay) const noexcept
     const int size = (int) buf[ch].size();
     double rp = (double) w - delay;
     while (rp < 0.0) rp += size;
-    const int i0 = (int) rp;
+    const int i0 = juce::jlimit (0, (int) size - 1, (int) rp);
     const int i1 = i0 + 1 >= size ? 0 : i0 + 1;
     const float fr = (float) (rp - i0);
     return buf[ch][(size_t) i0] + fr * (buf[ch][(size_t) i1] - buf[ch][(size_t) i0]);

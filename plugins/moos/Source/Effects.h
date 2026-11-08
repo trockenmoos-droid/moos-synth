@@ -92,7 +92,7 @@ private:
     {
         float rp = (float) w - delay;
         while (rp < 0.0f) rp += (float) size;
-        const int i0 = (int) rp;
+        const int i0 = juce::jlimit (0, size - 1, (int) rp);
         const int i1 = (i0 + 1) % size;
         const float fr = rp - (float) i0;
         return b[(size_t) i0] + fr * (b[(size_t) i1] - b[(size_t) i0]);
@@ -129,7 +129,7 @@ private:
         const float delay = (1.0f - p) * (float) window + 2.0f;
         float rp = (float) w - delay;
         if (rp < 0.0f) rp += (float) size;
-        const int i0 = (int) rp;
+        const int i0 = juce::jlimit (0, size - 1, (int) rp);
         const int i1 = (i0 + 1) & (size - 1);
         const float fr = rp - (float) i0;
         return buf[i0] + fr * (buf[i1] - buf[i0]);

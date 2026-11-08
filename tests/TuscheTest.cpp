@@ -143,6 +143,33 @@ int main (int argc, char** argv)
         proc.setPlayHead (&head);
     }
 
+    // Wie in Ableton: 44,1 kHz, wechselnde Blockgrößen, Pinselschläge spielen, dann Stopp und lange nichts
+    for (int round = 0; round < 6; ++round)
+    {
+        const double sr2 = 44100.0;
+        proc.setCurrentProgram (3);
+        proc.setPlayConfigDetails (0, 2, sr2, 512);
+        proc.prepareToPlay (sr2, 512);
+        juce::Random r (round + 11);
+        double t = 0.0; float worstAfterStop = 0.0f, worst = 0.0f; bool bad = false;
+        const double playFor = 5.0 + round * 7.0;
+        while (t < playFor + 60.0)
+        {
+            const int bs = round % 2 == 0 ? 512 : 32 + r.nextInt (1000);
+            juce::AudioBuffer<float> b (2, bs); b.clear();
+            juce::MidiBuffer m;
+            head.playing = t < playFor; head.ppq = t * 2.0;
+            proc.processBlock (b, m);
+            const float pk = b.getMagnitude (0, bs);
+            if (! tt::finite (b)) bad = true;
+            worst = juce::jmax (worst, pk);
+            if (t > playFor + 3.0) worstAfterStop = juce::jmax (worstAfterStop, pk);
+            t += bs / sr2;
+        }
+        tt::check (! bad && worstAfterStop < 1.0e-3f,
+                   juce::String::formatted ("Ableton-Szenario %d: %.0f s spielen, 60 s Stopp: Spitze=%.3f, nach Stopp=%.5f", round, playFor, worst, worstAfterStop));
+    }
+
     // Hörprobe
     {
         const int sel[] = { 1, 3, 5, 7, 10 };

@@ -96,7 +96,7 @@ float SalzProcessor::read (int ch, double pos) const noexcept
 {
     while (pos < 0.0) pos += lagerSize;
     while (pos >= lagerSize) pos -= lagerSize;
-    const int i0 = (int) pos, i1 = i0 + 1 >= lagerSize ? 0 : i0 + 1;
+    const int i0 = juce::jlimit (0, lagerSize - 1, (int) pos), i1 = i0 + 1 >= lagerSize ? 0 : i0 + 1;
     const float f = (float) (pos - i0);
     const auto& b = lager[ch];
     return b[(size_t) i0] + f * (b[(size_t) i1] - b[(size_t) i0]);

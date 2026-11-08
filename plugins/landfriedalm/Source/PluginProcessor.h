@@ -41,7 +41,7 @@ struct KsString
         const int size = (int) buf.size();
         float rp = (float) w - delay;
         while (rp < 0.0f) rp += (float) size;
-        const int i0 = (int) rp;
+        const int i0 = juce::jlimit (0, size - 1, (int) rp);
         const int i1 = (i0 + 1) % size;
         const float fr = rp - (float) i0;
         const float y = buf[(size_t) i0] + fr * (buf[(size_t) i1] - buf[(size_t) i0]);

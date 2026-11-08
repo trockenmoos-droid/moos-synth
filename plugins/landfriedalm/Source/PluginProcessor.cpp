@@ -302,7 +302,7 @@ void AlmProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& 
         {
             float rp = (float) echoW - d * (c == 0 ? 1.0f : 1.13f);
             while (rp < 0.0f) rp += (float) esz;
-            const int i0 = (int) rp, i1 = (i0 + 1) % esz;
+            const int i0 = juce::jlimit (0, esz - 1, (int) rp), i1 = (i0 + 1) % esz;
             const float fr = rp - (float) i0;
             const float y = echoBuf[c][(size_t) i0] + fr * (echoBuf[c][(size_t) i1] - echoBuf[c][(size_t) i0]);
             echoLp[c] = y + aLp * (echoLp[c] - y);

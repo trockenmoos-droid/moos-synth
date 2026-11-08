@@ -548,7 +548,7 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             const float w = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * t);
             double p = g.pos;
             p -= std::floor (p / L) * L;
-            const int i0 = (int) p, i1 = i0 + 1 >= L ? 0 : i0 + 1;
+            const int i0 = juce::jlimit (0, L - 1, (int) p), i1 = i0 + 1 >= L ? 0 : i0 + 1;
             const float x = (sd[i0] + (float) (p - i0) * (sd[i1] - sd[i0])) * w * g.amp * voices[g.voice].envNow;
             dl += x * g.gl; dr += x * g.gr;
             sl += x * g.gl * g.send; srr += x * g.gr * g.send;
