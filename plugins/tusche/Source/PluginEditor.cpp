@@ -9,9 +9,6 @@ static juce::Image loadAsset (const char* data, int size) { return juce::ImageFi
 // InkDisplay
 InkDisplay::InkDisplay (TuscheProcessor& p) : proc (p)
 {
-    const char* d[] = { TuscheAssets::blatt1_jpg, TuscheAssets::blatt2_jpg, TuscheAssets::blatt3_jpg, TuscheAssets::blatt4_jpg, TuscheAssets::blatt5_jpg };
-    const int   s[] = { TuscheAssets::blatt1_jpgSize, TuscheAssets::blatt2_jpgSize, TuscheAssets::blatt3_jpgSize, TuscheAssets::blatt4_jpgSize, TuscheAssets::blatt5_jpgSize };
-    for (int i = 0; i < 5; ++i) blatt[i] = loadAsset (d[i], s[i]);
     startTimerHz (30);
     setMouseCursor (juce::MouseCursor::CrosshairCursor);
 }
@@ -39,17 +36,29 @@ void InkDisplay::paint (juce::Graphics& g)
     using namespace ink;
     auto r = getLocalBounds().toFloat();
     juce::Random rnd (31);
-    const int bi = juce::jlimit (0, 4, (int) proc.apvts.state.getProperty ("blatt", 0));
+    const int bi = proc.currentSheetIndex();
+    const auto* sh = proc.sheet (bi);
 
-    // Druckblock mit ausgefranstem Rand, darin das Blatt
+    // Druckblock mit ausgefranstem Rand, darin das Blatt (ganz, damit der Lesekopf genau über der gelesenen Stelle steht)
     auto block = roughRect (r.reduced (3.0f), rnd, 3.0f);
     {
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (block);
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-        g.drawImage (blatt[bi], r, juce::RectanglePlacement::fillDestination);
+        if (sh != nullptr) g.drawImage (sh->image, r, juce::RectanglePlacement::stretchToFit);
         g.setColour (ink::ink.withAlpha (0.52f));
         g.fillRect (r);
+        // Lesekopf der Partitur
+        const float head = proc.readHead.load();
+        if (head >= 0.0f)
+        {
+            const float hx = r.getX() + head * r.getWidth();
+            g.setGradientFill (juce::ColourGradient (green.withAlpha (0.0f), hx - 40.0f, 0.0f, green.withAlpha (0.28f), hx, 0.0f, false));
+            g.fillRect (juce::Rectangle<float> (hx - 40.0f, r.getY(), 40.0f, r.getHeight()));
+            juce::Path hp; hp.startNewSubPath (hx, r.getY() + 4.0f); hp.lineTo (hx + 1.5f, r.getBottom() - 4.0f);
+            juce::Random hr (17);
+            dryStroke (g, hp, 4.0f, green, hr, 0.4f);
+        }
     }
 
     // Wellenform in Papierweiß – Spalte für Spalte, wie ein trockener Pinsel
@@ -61,7 +70,7 @@ void InkDisplay::paint (juce::Graphics& g)
     {
         const float pk = peaks[(size_t) x] * hh;
         if (wr.nextFloat() < 0.08f) continue;                                  // Aussparung
-        g.setColour (paper.withAlpha (0.55f + 0.4f * wr.nextFloat()));
+        g.setColour (paper.withAlpha ((0.55f + 0.4f * wr.nextFloat()) * (proc.readHead.load() >= 0.0f ? 0.45f : 1.0f)));
         g.fillRect (wa.getX() + x, mid - pk - wr.nextFloat() * 1.5f, 1.0f, pk * 2.0f + 1.0f);
     }
 
@@ -104,11 +113,12 @@ void InkDisplay::paint (juce::Graphics& g)
     }
 
     // Kopfzeile im Block
-    pencilText (g, "BLATT " + juce::String (bi + 1) + "/5  \xe2\x80\xba", blattButton(), juce::Justification::centredLeft, 11.0f, paper.withAlpha (0.85f));
+    pencilText (g, (bi >= numSheets ? juce::String ("EIGENES BLATT") : "BLATT " + juce::String (bi + 1) + "/5") + juce::String::fromUTF8 ("  \xe2\x80\xba"),
+                blattButton(), juce::Justification::centredLeft, 11.0f, paper.withAlpha (0.85f));
     pencilText (g, juce::String::fromUTF8 ("LADEN \xe2\x80\xa6"), loadButton(), juce::Justification::centredRight, 11.0f, paper.withAlpha (0.85f));
     if (src != nullptr)
         pencilText (g, src->name, { r.getCentreX() - 160.0f, 6.0f, 320.0f, 20.0f }, juce::Justification::centred, 12.0f, paper);
-    pencilText (g, juce::String::fromUTF8 ("Sample hierher ziehen \xc2\xb7 klicken/ziehen setzt die Position des Strichs"),
+    pencilText (g, juce::String::fromUTF8 ("Sample oder Bild hierher ziehen \xc2\xb7 klicken/ziehen setzt die Position des Strichs"),
                 { 14.0f, r.getBottom() - 17.0f, r.getWidth() - 28.0f, 14.0f }, juce::Justification::centredRight, 9.5f, paper.withAlpha (0.55f));
     if (dragOver)
     {
@@ -124,8 +134,8 @@ void InkDisplay::mouseDown (const juce::MouseEvent& e)
     const auto p = e.position;
     if (blattButton().contains (p))
     {
-        const int bi = ((int) proc.apvts.state.getProperty ("blatt", 0) + (e.mods.isRightButtonDown() ? 4 : 1)) % 5;
-        proc.apvts.state.setProperty ("blatt", bi, nullptr);
+        const int count = numSheets + (proc.sheet (numSheets) != nullptr ? 1 : 0);
+        proc.setSheet ((proc.currentSheetIndex() + (e.mods.isRightButtonDown() ? count - 1 : 1)) % count);
         return;
     }
     if (loadButton().contains (p))
@@ -160,14 +170,18 @@ void InkDisplay::mouseUp (const juce::MouseEvent&)
 
 bool InkDisplay::isInterestedInFileDrag (const juce::StringArray& files)
 {
-    for (auto& f : files) if (TuscheProcessor::isAudioFile (juce::File (f))) return true;
+    for (auto& f : files) if (TuscheProcessor::isAudioFile (juce::File (f)) || TuscheProcessor::isImageFile (juce::File (f))) return true;
     return false;
 }
 
 void InkDisplay::filesDropped (const juce::StringArray& files, int, int)
 {
     dragOver = false;
-    for (auto& f : files) if (proc.loadSample (juce::File (f)).isEmpty()) break;
+    // Bilder werden zum Blatt (Partitur), Audiodateien zum Sample
+    for (auto& f : files)
+        if (TuscheProcessor::isImageFile (juce::File (f))) { proc.loadSheetImage (juce::File (f)); break; }
+    for (auto& f : files)
+        if (TuscheProcessor::isAudioFile (juce::File (f)) && proc.loadSample (juce::File (f)).isEmpty()) break;
 }
 
 //==============================================================================
@@ -409,7 +423,7 @@ tmk::Editor::Config TuscheEditor::makeConfig (TuscheProcessor& p)
     c.textureName = "tusche";
     c.texture = [] { return loadAsset (TuscheAssets::papier_jpg, TuscheAssets::papier_jpgSize); };
     c.theme = inkTheme();
-    c.width = 1280; c.height = 860;
+    c.width = 1280; c.height = 930;
     c.keyboardState = &p.keyboardState;
     return c;
 }
@@ -453,6 +467,8 @@ TuscheEditor::TuscheEditor (TuscheProcessor& p)
                            combo ("quelle", "Quelle", 1.5f), knob ("wandern", "Wandern") });
     addSection (u8 ("H\xc3\x9cLLE"), { custom (env, 1.6f), knob ("attack", "Attack"), knob ("decay", "Decay"), knob ("sustain", "Sustain"),
                                       knob ("release", "Release") });
+    addSection ("PARTITUR", { toggle ("partitur", "Blatt lesen", 1.2f), combo ("takte", juce::String::fromUTF8 ("L\xc3\xa4nge"), 1.2f),
+                              knob ("einfluss", "Einfluss") });
     addSection ("STRICHE", { custom (steps, 1.0f) });
     addSection ("STRICH", chopItems);
     addSection ("KLANG", { knob ("tief", "Tiefpass"), knob ("hoch", "Hochpass"), knob ("reso", "Resonanz"), knob ("raumgr", "Raum"),
@@ -492,9 +508,11 @@ void TuscheEditor::tick()
 
 void TuscheEditor::layoutBody (juce::Rectangle<int> body)
 {
-    auto top = body.removeFromTop (body.getHeight() * 47 / 100);
+    auto top = body.removeFromTop (body.getHeight() * 53 / 100);
     layoutSection ("BLATT", top.removeFromLeft (top.getWidth() * 60 / 100));
-    layoutSection ("SPIEL", top.removeFromTop (top.getHeight() / 2));
+    const int h3 = top.getHeight() / 3;
+    layoutSection ("SPIEL", top.removeFromTop (h3));
+    layoutSection ("PARTITUR", top.removeFromTop (h3));
     layoutSection (juce::String::fromUTF8 ("H\xc3\x9cLLE"), top);
     layoutSection ("STRICHE", body.removeFromTop (96));
     auto bottom = split (body, { 6, 5 });
@@ -514,6 +532,8 @@ void TuscheEditor::paintHeader (juce::Graphics& g, juce::Rectangle<float>)
     g.drawText ("TUSCHE", tb, juce::Justification::centred);
     pencilText (g, "granular-sampler", { 178.0f, 14.0f, 160.0f, 16.0f }, juce::Justification::centredLeft, 11.0f, ink::ink.withAlpha (0.7f));
     pencilText (g, "trockenmoos audio", { 178.0f, 31.0f, 160.0f, 16.0f }, juce::Justification::centredLeft, 11.0f);
+    pencilText (g, versionText(), { 340.0f, 31.0f, 80.0f, 16.0f },
+                juce::Justification::centredLeft, 11.0f, ink::green.darker (0.2f));
     // Signatur
     pencilText (g, "CC", { (float) cfg.width - 50.0f, (float) cfg.height - 22.0f, 36.0f, 16.0f }, juce::Justification::centredRight, 12.0f);
 }

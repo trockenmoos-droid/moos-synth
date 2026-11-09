@@ -92,6 +92,13 @@ durch die 16 Striche, Taste transponiert, ohne DAW läuft er solange eine Taste 
 D#4 = Strich 16). Dazu Wandern (Position läuft), ADSR, Hoch-/Tiefpass mit Resonanz, Hall. Die Oberfläche verwendet
 Ausschnitte aus Christophs Tuschezeichnungen (Papier + fünf Blätter als Grund der Anzeige, „BLATT“ wechselt).
 
+**Partitur (ab 0.2.0):** Das Blatt in der Anzeige wird als Notenbild gelesen. Ein Lesekopf (grün) läuft im Takt
+über das Blatt (Länge 1–16 Takte): dunkle Tusche = dichte, laute Körner, helles Papier = dünn bis still, Schwerpunkt der
+Tusche (oben/unten) = Tonhöhe (Moll-Pentatonik, ±1 Oktave), zerrissene Ränder = mehr Chaos. „Einfluss“ regelt die
+Stärke. Eigene Bilder (JPG/PNG, z. B. Fotos eigener Tuschezeichnungen) in die Anzeige ziehen → „EIGENES BLATT“.
+
+Alle Plugins zeigen ihre Versionsnummer in der Kopfzeile.
+
 ## SALZGRANULAT
 Granular-Effekt mit 12 s „Salzlager“. Körner: Korngröße, Dichte, Tiefe (wie weit zurück), Streuung, Rückwärts.
 Kristall: stufenlos von Sole (Körner zufällig in Zeit, Tonhöhe, Raum) zu Kristall (Körner auf dem DAW-Taktraster,

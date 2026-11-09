@@ -203,8 +203,18 @@ namespace tmk
             g.setColour (cfg.theme.text.withAlpha (0.7f));
             g.setFont (juce::FontOptions (10.5f));
             g.drawText (cfg.subtitle, 20 + tw, 14, 110, 16, juce::Justification::centredLeft);
-            g.drawText ("trockenmoos audio", 20 + tw, 28, 110, 16, juce::Justification::centredLeft);
+            g.drawText ("trockenmoos audio" + (versionText().isNotEmpty() ? juce::String::fromUTF8 (" \xc2\xb7 ") + versionText() : juce::String()),
+                        20 + tw, 28, 180, 16, juce::Justification::centredLeft);
 
+        }
+        // Versionsnummer aus dem Build (im Testprogramm nicht vorhanden)
+        static juce::String versionText()
+        {
+           #ifdef JucePlugin_VersionString
+            return "v" JucePlugin_VersionString;
+           #else
+            return {};
+           #endif
         }
         virtual void pageChanged (int) {}
         virtual void tick() {}

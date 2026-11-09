@@ -143,6 +143,37 @@ int main (int argc, char** argv)
         proc.setPlayHead (&head);
     }
 
+    // Partitur: ein eigenes Bild – linke Hälfte Tusche, rechte Hälfte leeres Papier
+    {
+        auto png = dir.getChildFile ("partitur_test.png");
+        juce::Image im (juce::Image::RGB, 400, 200, true);
+        { juce::Graphics g (im); g.fillAll (juce::Colours::white); g.setColour (juce::Colours::black); g.fillRect (0, 0, 200, 200); }
+        { png.deleteFile(); juce::FileOutputStream os (png); juce::PNGImageFormat().writeImageToStream (im, os); }
+        proc.setCurrentProgram (0);
+        const auto err = proc.loadSheetImage (png);
+        setP (proc, "partitur", 1.0f); setP (proc, "einfluss", 1.0f); setP (proc, "takte", 0.0f);   // 1 Takt = 2 s
+        setP (proc, "raumgr", 0.0f);
+        for (int c = 0; c < tusche::numChops; ++c) setP (proc, tusche::cid (c, "raum"), 0.0f);
+        auto out = tt::run (proc, zeros (sr, 4.5), sr, notes (sr, { { 0.0, 60, true } }, &head, [] (double) { return true; }));
+        // zweiter Durchlauf (2..4 s): erste Sekunde = Tusche, zweite = Papier
+        const float inkRms = out.getRMSLevel (0, (int) (2.15 * sr), (int) (0.7 * sr));
+        const float paperRms = out.getRMSLevel (0, (int) (3.25 * sr), (int) (0.6 * sr));
+        tt::check (err.isEmpty() && proc.currentSheetIndex() == tusche::numSheets && inkRms > 0.01f && paperRms < inkRms * 0.35f,
+                   juce::String::formatted ("Partitur: Tusche RMS=%.3f, Papier RMS=%.4f (Papier deutlich leiser)", inkRms, paperRms) + err);
+        juce::MemoryBlock mb; proc.getStateInformation (mb);
+        TuscheProcessor other; other.setStateInformation (mb.getData(), (int) mb.getSize());
+        tt::check (other.currentSheetIndex() == tusche::numSheets && other.sheet (tusche::numSheets) != nullptr, "Projekt laden stellt das eigene Blatt wieder her");
+        // eingebaute Blätter: Analyse liefert Kontrast
+        for (int b = 0; b < tusche::numSheets; ++b)
+        {
+            const auto* sh = proc.sheet (b);
+            float mn = 1, mx = 0; for (float v : sh->dark) { mn = juce::jmin (mn, v); mx = juce::jmax (mx, v); }
+            tt::check (sh->image.isValid() && mx - mn > 0.9f, "Blatt " + juce::String (b + 1) + " gelesen (" + juce::String (sh->image.getWidth()) + " px)");
+        }
+        proc.setSheet (0);
+        setP (proc, "partitur", 0.0f);
+    }
+
     // Wie in Ableton: 44,1 kHz, wechselnde Blockgrößen, Pinselschläge spielen, dann Stopp und lange nichts
     for (int round = 0; round < 6; ++round)
     {
@@ -172,13 +203,13 @@ int main (int argc, char** argv)
 
     // Hörprobe
     {
-        const int sel[] = { 1, 3, 5, 7, 10 };
+        const int sel[] = { 1, 3, 5, 7, 12 };
         const int seg = (int) (sr * 7.0);
         juce::AudioBuffer<float> demo (2, seg * 5);
         for (int j = 0; j < 5; ++j)
         {
             proc.setCurrentProgram (sel[j]);
-            const bool keys = sel[j] >= 9;
+            const bool keys = sel[j] == 9 || sel[j] == 12;
             std::vector<std::tuple<double, int, bool>> ev;
             if (keys) { const int ns[] = { 60, 62, 64, 67, 69, 72, 64, 60 }; for (int k = 0; k < 8; ++k) { ev.push_back ({ 0.1 + k * 0.6, ns[k], true }); ev.push_back ({ 0.5 + k * 0.6, ns[k], false }); } }
             else { ev = { { 0.1, 57, true }, { 0.1, 64, true }, { 0.1, 69, true }, { 3.0, 57, false }, { 3.0, 64, false }, { 3.0, 69, false },
@@ -189,7 +220,8 @@ int main (int argc, char** argv)
         tt::writeWav (dir.getChildFile ("tusche_demo.wav"), demo, sr);
     }
 
-    proc.setCurrentProgram (1);
+    proc.setCurrentProgram (10);   // Partitur · Blatt lesen
+    proc.setSheet (1);
     setP (proc, "auswahl", 5.0f);
     tt::run (proc, zeros (sr, 2.0), sr, notes (sr, { { 0.05, 60, true }, { 0.05, 67, true } }));
     tt::waitForTexture ("tusche", [] { return juce::ImageFileFormat::loadFrom (TuscheAssets::papier_jpg, (size_t) TuscheAssets::papier_jpgSize); }, dir);

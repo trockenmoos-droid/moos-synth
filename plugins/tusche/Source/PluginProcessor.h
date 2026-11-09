@@ -21,6 +21,10 @@ namespace tusche
     inline const juce::StringArray grainDivs { "1/1", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/64" };
     inline double divBeats (int i) { const double v[] = { 4.0, 2.0, 1.0, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125, 0.0625 }; return v[juce::jlimit (0, 8, i)]; }
     inline const juce::StringArray sources { "Klavier", "Glas", "Chor", "Holz", "Eigenes Sample" };
+    inline const juce::StringArray scoreLens { "1 Takt", "2 Takte", "4 Takte", "8 Takte", "16 Takte" };
+    inline double scoreBars (int i) { const double v[] = { 1, 2, 4, 8, 16 }; return v[juce::jlimit (0, 4, i)]; }
+    constexpr int numSheets = 5;          // eingebaute Blätter; Index 5 = eigenes Bild
+    constexpr int scoreCols = 256;
     // Parameter je Strich
     inline const char* chopParams[] = { "pos", "korn", "dichte", "chaos", "raum", "ton" };
     constexpr int numChopParams = 6;
@@ -52,6 +56,18 @@ public:
 
     juce::MidiKeyboardState keyboardState;
 
+    // --- Partitur: ein Blatt wird als Notenbild gelesen ---
+    // je Spalte: Schwärze (0..1), Schwerpunkt der Tusche (0 oben .. 1 unten), Rauheit (zerrissene Ränder)
+    struct Sheet { juce::Image image; juce::String name; juce::File file; float dark[tusche::scoreCols] {}, centre[tusche::scoreCols] {}, rough[tusche::scoreCols] {}; };
+    static std::unique_ptr<Sheet> analyseSheet (const juce::Image&, const juce::String& name);
+    const Sheet* sheet (int index) const;                       // 0..4 eingebaut, 5 eigenes (oder nullptr)
+    int  currentSheetIndex() const { return sheetIndex.load(); }
+    void setSheet (int index);                                  // Message-Thread
+    juce::String loadSheetImage (const juce::File&);            // eigenes Bild (jpg/png)
+    static bool isImageFile (const juce::File&);
+    std::atomic<float> readHead { -1.0f };                       // 0..1, -1 = aus
+    std::atomic<int> sheetChanges { 0 };
+
     // Anzeige: Körner (Position 0..1 im Sample, Leuchten), aktueller Schritt, aktive Striche
     struct GrainView { std::atomic<float> pos { 0 }, glow { 0 }, pan { 0 }; };
     GrainView grainView[tusche::maxGrains];
@@ -82,6 +98,9 @@ private:
     void noteOff (int note);
     int  freeVoice();
     void spawnGrain (int voiceIndex, const Source& src, double intervalSamples);
+    struct ScoreNow { bool on = false; float dark = 1.0f, centre = 0.5f, rough = 0.0f; };
+    ScoreNow scoreAt (double beat) const;
+    ScoreNow scoreNow;
     float chopValue (int chop, int param) const { return chopP[chop][param]->load(); }
     void stateRestored() override;
     void setUserSource (std::unique_ptr<Source>);
@@ -108,11 +127,17 @@ private:
     struct Retired { std::unique_ptr<Source> s; juce::uint32 at; };
     std::vector<Retired> retired;
     juce::AudioFormatManager formats;
+    std::unique_ptr<Sheet> sheets[tusche::numSheets];
+    std::unique_ptr<Sheet> userSheetOwner;
+    std::atomic<const Sheet*> userSheet { nullptr };
+    std::vector<std::unique_ptr<Sheet>> retiredSheets;
+    std::atomic<int> sheetIndex { 0 };
 
     using AF = std::atomic<float>*;
     AF modus{}, sync{}, schritt{}, auswahl{}, quelle{}, wandern{}, kornteilung{};
     AF attack{}, decay{}, sustain{}, release{};
     AF tief{}, hoch{}, reso{}, raumGroesse{}, ausgang{};
+    AF partitur{}, takte{}, einfluss{};
     AF chopP[tusche::numChops][tusche::numChopParams] {};
     AF chopOn[tusche::numChops] {};
 };

@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <deque>
+#include "TuscheAssets.h"
 
 using namespace tusche;
 
@@ -26,6 +27,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "reso", 1 },     "Resonanz", 0.0f, 1.0f, 0.15f));
     p.push_back (std::make_unique<P>  (ID { "raumgr", 1 },   u8 ("Raumgr\xc3\xb6\xc3\x9f" "e"), 0.0f, 1.0f, 0.5f));
     p.push_back (std::make_unique<P>  (ID { "ausgang", 1 },  "Ausgang (dB)", -24.0f, 12.0f, -3.0f));
+    p.push_back (std::make_unique<PB> (ID { "partitur", 1 }, "Partitur", false));
+    p.push_back (std::make_unique<PC> (ID { "takte", 1 },    u8 ("Partitur-L\xc3\xa4nge"), scoreLens, 2));
+    p.push_back (std::make_unique<P>  (ID { "einfluss", 1 }, "Partitur-Einfluss", 0.0f, 1.0f, 0.75f));
     for (int c = 0; c < numChops; ++c)
     {
         const juce::String n = "Strich " + juce::String (c + 1);
@@ -111,6 +115,12 @@ namespace
             { "Strich \xc2\xb7 Tastenstriche",
               { { "quelle", 0 }, { "modus", 2 }, { "attack", 5.0f }, { "decay", 800.0f }, { "sustain", 0.6f }, { "release", 900.0f } },
               [] (int c, juce::Random&, float* v) { v[0] = (c + 0.2f) / numChops; v[1] = 150.0f; v[2] = 0.7f; v[3] = 0.1f; v[4] = 0.35f; } },
+            { "Partitur \xc2\xb7 Blatt lesen",
+              { { "quelle", 0 }, { "modus", 0 }, { "partitur", 1 }, { "takte", 2 }, { "einfluss", 0.85f }, { "attack", 60.0f }, { "release", 1500.0f } },
+              [] (int, juce::Random&, float* v) { v[1] = 120.0f; v[2] = 0.75f; v[3] = 0.15f; v[4] = 0.4f; } },
+            { "Partitur \xc2\xb7 Druckspur",
+              { { "quelle", 3 }, { "modus", 0 }, { "partitur", 1 }, { "takte", 1 }, { "einfluss", 1.0f }, { "attack", 5.0f }, { "release", 800.0f } },
+              [] (int, juce::Random&, float* v) { v[1] = 50.0f; v[2] = 0.8f; v[3] = 0.25f; v[4] = 0.25f; } },
             { "Strich \xc2\xb7 Glasharfe",
               { { "quelle", 1 }, { "modus", 2 }, { "attack", 4.0f }, { "decay", 1200.0f }, { "sustain", 0.4f }, { "release", 1500.0f } },
               [penta] (int c, juce::Random&, float* v) { v[0] = 0.05f; v[1] = 200.0f; v[2] = 0.72f; v[3] = 0.05f; v[4] = 0.5f; v[5] = (float) penta[c]; } },
@@ -245,12 +255,19 @@ TuscheProcessor::TuscheProcessor()
     modus = get ("modus"); sync = get ("sync"); schritt = get ("schritt"); auswahl = get ("auswahl"); quelle = get ("quelle");
     wandern = get ("wandern"); attack = get ("attack"); decay = get ("decay"); sustain = get ("sustain"); release = get ("release");
     tief = get ("tief"); hoch = get ("hoch"); reso = get ("reso"); raumGroesse = get ("raumgr"); ausgang = get ("ausgang");
+    partitur = get ("partitur"); takte = get ("takte"); einfluss = get ("einfluss");
     for (int c = 0; c < numChops; ++c)
     {
         for (int k = 0; k < numChopParams; ++k) chopP[c][k] = get (cid (c, chopParams[k]));
         chopOn[c] = get (cid (c, "an"));
     }
     for (int i = 0; i < 4; ++i) builtIn[i] = makeBuiltIn (i);
+    {
+        const char* d[] = { TuscheAssets::blatt1_jpg, TuscheAssets::blatt2_jpg, TuscheAssets::blatt3_jpg, TuscheAssets::blatt4_jpg, TuscheAssets::blatt5_jpg };
+        const int   z[] = { TuscheAssets::blatt1_jpgSize, TuscheAssets::blatt2_jpgSize, TuscheAssets::blatt3_jpgSize, TuscheAssets::blatt4_jpgSize, TuscheAssets::blatt5_jpgSize };
+        for (int i = 0; i < numSheets; ++i)
+            sheets[i] = analyseSheet (juce::ImageFileFormat::loadFrom (d[i], (size_t) z[i]), "Blatt " + juce::String (i + 1));
+    }
     formats.registerBasicFormats();
     heldNotes.reserve (128);
 }
@@ -328,6 +345,16 @@ void TuscheProcessor::clearSample()
 
 void TuscheProcessor::stateRestored()
 {
+    {
+        const juce::File bf (apvts.state.getProperty ("blattDatei").toString());
+        if (bf.getFullPathName().isNotEmpty() && bf.existsAsFile() && (userSheetOwner == nullptr || userSheetOwner->file != bf))
+        {
+            const int keep = (int) apvts.state.getProperty ("blatt", 0);
+            loadSheetImage (bf);
+            setSheet (keep);
+        }
+        else setSheet ((int) apvts.state.getProperty ("blatt", 0));
+    }
     const juce::File f (apvts.state.getProperty ("sample").toString());
     if (f.getFullPathName().isNotEmpty() && f.existsAsFile() && (userOwner == nullptr || userOwner->file != f))
     {
@@ -336,6 +363,102 @@ void TuscheProcessor::stateRestored()
         apvts.getParameter ("quelle")->setValueNotifyingHost (q);
     }
     else if (f.getFullPathName().isEmpty() && userOwner != nullptr) setUserSource (nullptr);
+}
+
+
+//==============================================================================
+// Partitur
+std::unique_ptr<TuscheProcessor::Sheet> TuscheProcessor::analyseSheet (const juce::Image& img, const juce::String& name)
+{
+    auto s = std::make_unique<Sheet>();
+    s->image = img; s->name = name;
+    if (! img.isValid()) { std::fill (std::begin (s->dark), std::end (s->dark), 0.5f); std::fill (std::begin (s->centre), std::end (s->centre), 0.5f); return s; }
+    // auf Arbeitsgröße bringen, Helligkeit messen
+    const int W = scoreCols, H = 96;
+    auto small = img.rescaled (W, H, juce::Graphics::mediumResamplingQuality);
+    float lum[96][scoreCols];
+    float lo = 1.0f, hi = 0.0f;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x)
+        {
+            const float l = small.getPixelAt (x, y).getPerceivedBrightness();
+            lum[y][x] = l; lo = juce::jmin (lo, l); hi = juce::jmax (hi, l);
+        }
+    const float range = juce::jmax (0.05f, hi - lo);
+    float raw[scoreCols];
+    for (int x = 0; x < W; ++x)
+    {
+        float sum = 0.0f, wy = 0.0f, edge = 0.0f;
+        for (int y = 0; y < H; ++y)
+        {
+            const float ink = 1.0f - (lum[y][x] - lo) / range;          // 1 = schwarz, 0 = Papier
+            sum += ink; wy += ink * (float) y;
+            if (y > 0) edge += std::abs (lum[y][x] - lum[y - 1][x]) / range;
+            if (x > 0) edge += std::abs (lum[y][x] - lum[y][x - 1]) / range;
+        }
+        raw[x] = sum / H;
+        s->centre[x] = sum > 0.01f ? wy / sum / (H - 1) : 0.5f;
+        s->rough[x] = juce::jlimit (0.0f, 1.0f, edge / H * 1.5f);
+    }
+    // Schwärze auf 0..1 spreizen (helles Papier = Stille, volle Tusche = dicht)
+    float mn = 1.0f, mx = 0.0f;
+    for (float v : raw) { mn = juce::jmin (mn, v); mx = juce::jmax (mx, v); }
+    for (int x = 0; x < W; ++x) s->dark[x] = juce::jlimit (0.0f, 1.0f, (raw[x] - mn) / juce::jmax (0.05f, mx - mn));
+    return s;
+}
+
+const TuscheProcessor::Sheet* TuscheProcessor::sheet (int index) const
+{
+    if (index >= numSheets) return userSheet.load();
+    return sheets[juce::jlimit (0, numSheets - 1, index)].get();
+}
+
+void TuscheProcessor::setSheet (int index)
+{
+    index = juce::jlimit (0, numSheets, index);
+    if (index == numSheets && userSheet.load() == nullptr) index = 0;
+    sheetIndex = index;
+    apvts.state.setProperty ("blatt", index, nullptr);
+    ++sheetChanges;
+}
+
+bool TuscheProcessor::isImageFile (const juce::File& f)
+{
+    return f.existsAsFile() && f.hasFileExtension ("jpg;jpeg;png;gif");
+}
+
+juce::String TuscheProcessor::loadSheetImage (const juce::File& file)
+{
+    if (! isImageFile (file)) return "Kein Bild: " + file.getFileName();
+    auto img = juce::ImageFileFormat::loadFrom (file);
+    if (! img.isValid()) return "Bild kann nicht gelesen werden: " + file.getFileName();
+    if (img.getWidth() > 1600) img = img.rescaled (1600, juce::roundToInt (1600.0 * img.getHeight() / img.getWidth()), juce::Graphics::highResamplingQuality);
+    auto s = analyseSheet (img, file.getFileNameWithoutExtension());
+    s->file = file;
+    userSheet = s.get();
+    if (userSheetOwner != nullptr) retiredSheets.push_back (std::move (userSheetOwner));   // klein, bleibt bis zum Schließen
+    userSheetOwner = std::move (s);
+    apvts.state.setProperty ("blattDatei", file.getFullPathName(), nullptr);
+    setSheet (numSheets);
+    return {};
+}
+
+TuscheProcessor::ScoreNow TuscheProcessor::scoreAt (double beat) const
+{
+    ScoreNow r;
+    if (partitur->load() < 0.5f) return r;
+    const Sheet* sh = sheet (sheetIndex.load());
+    if (sh == nullptr) return r;
+    const double len = scoreBars ((int) takte->load()) * 4.0;
+    double u = beat / len; u -= std::floor (u);
+    const float fx = (float) u * (scoreCols - 1);
+    const int a = juce::jlimit (0, scoreCols - 1, (int) fx), b = juce::jmin (scoreCols - 1, a + 1);
+    const float f = fx - (float) a;
+    r.on = true;
+    r.dark = sh->dark[a] + f * (sh->dark[b] - sh->dark[a]);
+    r.centre = sh->centre[a] + f * (sh->centre[b] - sh->centre[a]);
+    r.rough = sh->rough[a] + f * (sh->rough[b] - sh->rough[a]);
+    return r;
 }
 
 //==============================================================================
@@ -403,7 +526,17 @@ void TuscheProcessor::spawnGrain (int vi, const Source& src, double interval)
     pos -= std::floor (pos);
     int len = (int) (chopValue (c, 1) * 0.001 * sr * (1.0 + chaos * (rng.nextDouble() - 0.5) * 0.8));
     len = juce::jlimit (32, (int) (sr * 2.0), len);
-    float semis = chopValue (c, 5) + v.pitch + chaos * 0.4f * (rng.nextFloat() - 0.5f);
+    // Partitur: Schwerpunkt der Tusche -> Tonhöhe (Moll-Pentatonik), Rauheit -> Chaos, Schwärze -> Lautstärke
+    const float inf = scoreNow.on ? einfluss->load() : 0.0f;
+    float scoreSemis = 0.0f;
+    if (inf > 0.0f)
+    {
+        static const int penta[] = { -12, -9, -7, -5, -2, 0, 3, 5, 7, 10, 12 };
+        const int idx = juce::jlimit (0, 10, juce::roundToInt ((1.0f - scoreNow.centre) * 10.0f));
+        scoreSemis = (float) penta[idx] * inf;
+        scoreSemis = std::round (scoreSemis);
+    }
+    float semis = chopValue (c, 5) + v.pitch + scoreSemis + (chaos + inf * scoreNow.rough * 0.5f) * 0.4f * (rng.nextFloat() - 0.5f);
     if (chaos > 0.55f && rng.nextFloat() < (chaos - 0.55f) * 0.9f) semis += rng.nextBool() ? 12.0f : -12.0f;   // Oktavsprünge
     double step = std::pow (2.0, semis / 12.0) * src.rate / sr;
     double start = pos * L;
@@ -415,7 +548,7 @@ void TuscheProcessor::spawnGrain (int vi, const Source& src, double interval)
     g.active = true; g.voice = vi; g.age = 0; g.len = len;
     g.pos = start; g.step = step;
     g.gl = std::sqrt (0.5f * (1.0f - pan)); g.gr = std::sqrt (0.5f * (1.0f + pan));
-    g.amp = v.vel / (float) std::sqrt (juce::jmax (1.0, overlap));
+    g.amp = v.vel / (float) std::sqrt (juce::jmax (1.0, overlap)) * (1.0f - inf * 0.6f * (1.0f - scoreNow.dark));
     g.send = chopValue (c, 4);
     g.viewPos = (float) pos;
     chopGlow[c] = 1.0f;
@@ -515,6 +648,9 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         }
         else currentStep = -1;
 
+        // Partitur an dieser Stelle lesen (alle 32 Samples genügt)
+        if ((i & 31) == 0) scoreNow = scoreAt (beat);
+
         // Stimmen: Hüllkurve, Wandern, Körner planen
         for (int vi = 0; vi < maxVoices; ++vi)
         {
@@ -528,10 +664,19 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             double interval;
             if (synced) interval = divBeats (juce::roundToInt (dens * 8.0f)) / bps;
             else        interval = sr / (1.0 + dens * dens * 79.0);
+            if (scoreNow.on)
+            {
+                // dunkle Stellen: dichter, helles Papier: dünner bis still
+                const float inf = einfluss->load();
+                interval /= (double) (1.0f + inf * (2.2f * scoreNow.dark - 0.6f));
+                interval = juce::jmax (8.0, interval);
+            }
             v.untilGrain -= 1.0;
+            if (v.untilGrain > interval) v.untilGrain = interval;
             if (v.untilGrain <= 0.0)
             {
-                spawnGrain (vi, *src, interval);
+                const bool silent = scoreNow.on && scoreNow.dark < 0.12f && rng.nextFloat() < einfluss->load();
+                if (! silent) spawnGrain (vi, *src, interval);
                 const float chaos = chopValue (v.chop, 3);
                 v.untilGrain += interval * (synced ? 1.0 : 1.0 + chaos * (rng.nextDouble() - 0.5));
                 if (v.untilGrain < 1.0) v.untilGrain = 1.0;
@@ -569,6 +714,18 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         SL[i] = sl * 1.1f; SR[i] = srr * 1.1f;
     }
     if (! playing) freeBeat += n * bps;
+    {
+        // Lesekopf für die Anzeige: nur wenn die Partitur an ist und etwas klingt
+        bool anyActive = false;
+        for (auto& v : voices) anyActive = anyActive || v.active;
+        if (partitur->load() > 0.5f && anyActive)
+        {
+            const double beat = playing ? ppq + n * bps : freeBeat;
+            double u = beat / (scoreBars ((int) takte->load()) * 4.0); u -= std::floor (u);
+            readHead = (float) u;
+        }
+        else readHead = -1.0f;
+    }
 
     // Raum (Hall) dazu
     reverb.process (SL, SR, SL, SR, n);

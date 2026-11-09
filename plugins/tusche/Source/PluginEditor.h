@@ -260,7 +260,6 @@ private:
     juce::Rectangle<float> loadButton() const { return { (float) getWidth() - 132.0f, 6.0f, 120.0f, 20.0f }; }
     void rebuildPeaks();
     TuscheProcessor& proc;
-    juce::Image blatt[5];
     std::vector<float> peaks;
     int peaksFor = -1, peaksWidth = 0;
     const void* peaksSource = nullptr;

@@ -1,5 +1,5 @@
 set(TM_VST3_CATS Instrument Sampler)
-tm_add_plugin(TUSCHE "TUSCHE" Tsch TRUE 0.1.0
+tm_add_plugin(TUSCHE "TUSCHE" Tsch TRUE 0.2.0
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
 
