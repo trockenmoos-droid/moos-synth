@@ -44,7 +44,7 @@ jobs:
 
   # ---------------------------------------------------------------- macOS
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v5
 
