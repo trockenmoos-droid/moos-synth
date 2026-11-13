@@ -135,3 +135,13 @@ Offline-Tests (Stabilität, Presets, Hörproben, Screenshots): `-DTM_BUILD_TESTS
 Die Plugins sind und bleiben gratis (keine Bezahlversion, keine Spenden-Einnahmen).
 Gebaut mit JUCE 8 unter der kostenlosen Starter-Lizenz (laut JUCE-EULA bis 20.000 USD Jahresumsatz/Förderung,
 ohne Pflicht zu offenem Quellcode oder Logo) – vor Veröffentlichung in der aktuellen EULA auf juce.com prüfen.
+
+## Downloads & Installation (Windows, macOS, Linux)
+Jeder Push baut automatisch drei Pakete (GitHub Actions → Artifacts):
+
+- **trockenmoos-plugins-VST3-Windows** – `.vst3`-Ordner nach `C:\Program Files\Common Files\VST3\`
+- **trockenmoos-plugins-macOS** (Universal: Apple Silicon + Intel, ab macOS 10.13) – darin `VST3/`, `AU/`, `Standalone/`
+  - VST3 → `~/Library/Audio/Plug-Ins/VST3/`, AU (`.component`, für Logic/GarageBand) → `~/Library/Audio/Plug-Ins/Components/`
+  - Die Plugins sind nicht von Apple notarisiert. Einmalig im Terminal freigeben:
+    `xattr -cr ~/Library/Audio/Plug-Ins/VST3/*.vst3 ~/Library/Audio/Plug-Ins/Components/*.component`
+- **trockenmoos-plugins-Linux** (x86_64) – `.vst3`-Ordner nach `~/.vst3/`, Standalone-Programme direkt startbar

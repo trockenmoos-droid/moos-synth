@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
+# macOS: läuft ab 10.13; Universal-Build (Apple Silicon + Intel) wird im Workflow gesetzt
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
 
 project(TROCKENMOOS_PLUGINS VERSION 0.3.0)
 
@@ -23,6 +25,12 @@ endif()
 # Gemeinsame Bausteine aller trockenmoos-Plugins
 add_library(trockenmoos_common INTERFACE)
 target_include_directories(trockenmoos_common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+
+# Formate je System: macOS bekommt zusätzlich Audio Units (Logic, GarageBand)
+set(TM_FORMATS VST3 Standalone)
+if(APPLE)
+    list(APPEND TM_FORMATS AU)
+endif()
 
 # tm_add_plugin(<Target> <Produktname> <4-Zeichen-Code> <IS_SYNTH TRUE/FALSE> <Version> <Quellen...>)
 function(tm_add_plugin target product code is_synth version)
@@ -50,7 +58,7 @@ function(tm_add_plugin target product code is_synth version)
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         COPY_PLUGIN_AFTER_BUILD FALSE
         VST3_CATEGORIES ${cats}
-        FORMATS VST3 Standalone)
+        FORMATS ${TM_FORMATS})
 
     target_sources(${target} PRIVATE ${ARGN})
 

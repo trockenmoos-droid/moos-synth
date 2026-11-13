@@ -1,10 +1,11 @@
-name: Build trockenmoos audio plugins (Windows VST3)
+name: Build trockenmoos audio plugins (Windows, macOS, Linux)
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
+  # ---------------------------------------------------------------- Windows
   windows:
     runs-on: windows-2022
     steps:
@@ -40,3 +41,94 @@ jobs:
         with:
           name: trockenmoos-plugins-Standalone-Windows
           path: dist/Standalone/
+
+  # ---------------------------------------------------------------- macOS
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure (Universal: Apple Silicon + Intel)
+        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4 -- -quiet
+
+      - name: Collect and sign (ad hoc)
+        run: |
+          mkdir -p dist/VST3 dist/AU dist/Standalone
+          find build/plugins -path '*Release/VST3/*.vst3' -maxdepth 6 -type d -prune -exec cp -R {} dist/VST3/ \;
+          find build/plugins -path '*Release/AU/*.component' -maxdepth 6 -type d -prune -exec cp -R {} dist/AU/ \;
+          find build/plugins -path '*Release/Standalone/*.app' -maxdepth 6 -type d -prune -exec cp -R {} dist/Standalone/ \;
+          # ohne Apple-Konto: Ad-hoc-Signatur (nötig, damit Apple Silicon die Plugins überhaupt lädt)
+          for b in dist/VST3/*.vst3 dist/AU/*.component dist/Standalone/*.app; do
+            codesign --force --deep --sign - "$b"
+          done
+          cp README.md dist/
+          ls -R dist | head -80
+
+      - name: Validate Audio Units (auval)
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R dist/AU/*.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          sleep 3
+          auval -a | grep -i trck || true
+          fail=0
+          while read -r type sub manu rest; do
+            echo "=== auval -v $type $sub $manu"
+            if ! auval -v "$type" "$sub" "$manu" > auval.log 2>&1; then
+              tail -40 auval.log; fail=1
+            else
+              grep -E "AU VALIDATION SUCCEEDED" auval.log
+            fi
+          done < <(auval -a | grep -i " trck " | awk '{print $1, $2, $3}')
+          exit $fail
+
+      - name: Pack
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent . ../trockenmoos-plugins-macOS.zip
+          cd .. && ls -la trockenmoos-plugins-macOS.zip
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: trockenmoos-plugins-macOS
+          path: trockenmoos-plugins-macOS.zip
+
+  # ---------------------------------------------------------------- Linux
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel 3
+
+      - name: Collect
+        run: |
+          mkdir -p dist/VST3 dist/Standalone
+          find build/plugins -path '*_artefacts/Release/VST3/*.vst3' -maxdepth 5 -type d -prune -exec cp -R {} dist/VST3/ \;
+          find build/plugins -path '*_artefacts/Release/Standalone/*' -maxdepth 5 -type f -perm -u+x -exec cp {} dist/Standalone/ \;
+          cp README.md dist/
+          ls -R dist | head -60
+
+      - name: Pack (keeps file permissions)
+        run: cd dist && zip -qry ../trockenmoos-plugins-Linux.zip . && cd .. && ls -la trockenmoos-plugins-Linux.zip
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: trockenmoos-plugins-Linux
+          path: trockenmoos-plugins-Linux.zip
