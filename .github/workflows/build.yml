@@ -64,6 +64,13 @@ jobs:
           for b in dist/VST3/*.vst3 dist/AU/*.component dist/Standalone/*.app; do
             codesign --force --deep --sign - "$b"
           done
+          # jede Binärdatei muss beide Architekturen enthalten (Universal)
+          fail=0
+          for f in dist/VST3/*.vst3/Contents/MacOS/* dist/AU/*.component/Contents/MacOS/* dist/Standalone/*.app/Contents/MacOS/*; do
+            archs=$(lipo -archs "$f"); echo "$archs  $f"
+            case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) fail=1 ;; esac
+          done
+          exit $fail
           cp README.md dist/
           ls -R dist | head -80
 
