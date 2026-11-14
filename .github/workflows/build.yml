@@ -31,13 +31,13 @@ jobs:
           Get-ChildItem dist -Recurse -Depth 1
 
       - name: Upload all plugins (VST3)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trockenmoos-plugins-VST3-Windows
           path: dist/VST3/
 
       - name: Upload standalone apps
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trockenmoos-plugins-Standalone-Windows
           path: dist/Standalone/
@@ -99,7 +99,7 @@ jobs:
           cd .. && ls -la trockenmoos-plugins-macOS.zip
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trockenmoos-plugins-macOS
           path: trockenmoos-plugins-macOS.zip
@@ -135,7 +135,7 @@ jobs:
         run: cd dist && zip -qry ../trockenmoos-plugins-Linux.zip . && cd .. && ls -la trockenmoos-plugins-Linux.zip
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trockenmoos-plugins-Linux
           path: trockenmoos-plugins-Linux.zip
