@@ -30,6 +30,7 @@ HammerEditor::HammerEditor (HammerProcessor& p)
     : tmk::Editor (p, makeConfig()), rings (p, cfg.theme)
 {
     addSection ("SCHMIEDE", { custom (rings, 1.0f) });
+    addSection ("WASSERRAD", { knob ("wasserrad", "Wasserrad"), combo ("radumlauf", "Umlauf", 1.2f) });
     addSection ("WERK", { toggle ("frei", "Frei"), knob ("swing", "Swing"), knob ("chaos", "Chaos"), knob ("mutation", "Mutation"),
                           knob ("hitze", "Hitze"), knob ("volume", u8 ("Lautst\xc3\xa4rke")) });
     addSection ("GLUT", { knob ("glut", "Glut"), knob ("korn", "Korn"), knob ("dichte", "Dichte"), knob ("tonhoehe", u8 ("Tonh\xc3\xb6he")),
@@ -52,6 +53,7 @@ HammerEditor::HammerEditor (HammerProcessor& p)
 void HammerEditor::layoutBody (juce::Rectangle<int> body)
 {
     auto left = body.removeFromLeft (body.getWidth() * 27 / 100);
+    layoutSection ("WASSERRAD", left.removeFromBottom (left.getHeight() * 22 / 100));
     layoutSection ("SCHMIEDE", left);
     auto top = body.removeFromTop (body.getHeight() * 22 / 100);
     auto t2 = split (top, { 6, 7 });

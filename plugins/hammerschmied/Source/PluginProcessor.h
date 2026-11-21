@@ -119,7 +119,7 @@ private:
     juce::AudioBuffer<float> dryBuf;
 
     using AF = std::atomic<float>*;
-    AF frei{}, swing{}, chaos{}, mutation{}, hitze{}, volume{};
+    AF frei{}, swing{}, chaos{}, mutation{}, hitze{}, volume{}, wasserrad{}, radumlauf{};
     AF glut{}, korn{}, dichte{}, tonhoehe{}, rueckwaerts{}, stotter{}, streuung{};
     AF level[hammer::numTracks]{}, tune[hammer::numTracks]{}, decay[hammer::numTracks]{}, steps[hammer::numTracks]{},
        hitsP[hammer::numTracks]{}, rotate[hammer::numTracks]{}, chance[hammer::numTracks]{}, rate[hammer::numTracks]{},

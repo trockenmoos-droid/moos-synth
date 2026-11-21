@@ -183,6 +183,33 @@ int main (int argc, char** argv)
         tt::check (proc.sampleFor (0) == nullptr && (int) proc.apvts.getRawParameterValue (hammer::pid (0, "quelle"))->load() == 0, "Sample entfernen");
     }
 
+    // Wasserrad: die Eins bleibt fest, die Taktmitte wird nach hinten gezogen
+    {
+        auto onsets = [&] (float wheel)
+        {
+            proc.setPlayHead (&head);
+            proc.setCurrentProgram (0);
+            setP (proc, "frei", 0.0f);
+            for (int t = 0; t < 6; ++t) { setP (proc, hammer::pid (t, "hit"), t == 0 ? 4.0f : 0.0f); setP (proc, hammer::pid (t, "quelle"), 0.0f); }
+            for (auto id : { "chaos", "mutation", "glut", "swing", "hitze", "stotter" }) setP (proc, id, 0.0f);
+            setP (proc, hammer::pid (0, "chance"), 1.0f); setP (proc, hammer::pid (0, "dreh"), 0.0f); setP (proc, hammer::pid (0, "sch"), 16.0f);
+            setP (proc, hammer::pid (0, "tempo"), 3.0f);
+            setP (proc, "wasserrad", wheel); setP (proc, "radumlauf", 1.0f);
+            auto out = tt::run (proc, zeros ((int) (sr * 4.2)), sr, transport (head, sr));
+            auto first = [&] (double from)
+            {
+                for (int i = (int) (from * sr); i < (int) ((from + 0.3) * sr); ++i) if (std::abs (out.getSample (0, i)) > 0.05f) return (i - from * sr) / sr * 1000.0;
+                return -1.0;
+            };
+            return std::pair<double, double> { first (1.98), first (2.98) };   // Takt 2: die Eins (2.0 s) und die Mitte (3.0 s)
+        };
+        auto [one0, mid0] = onsets (0.0f);
+        auto [one1, mid1] = onsets (1.0f);
+        tt::check (one0 >= 0 && one1 >= 0 && std::abs (one1 - one0) < 5.0 && mid1 - mid0 > 30.0,
+                   juce::String::formatted ("Wasserrad: Eins %.1f -> %.1f ms, Taktmitte %.1f -> %.1f ms", one0, one1, mid0, mid1));
+        setP (proc, "wasserrad", 0.0f);
+    }
+
     // Hörprobe: alle Presets je 6 Sekunden
     {
         const int seg = (int) (sr * 6);

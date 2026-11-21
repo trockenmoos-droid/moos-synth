@@ -17,6 +17,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "mutation", 1 },    "Mutation", 0.0f, 1.0f, 0.3f));
     p.push_back (std::make_unique<P>  (ID { "hitze", 1 },       "Hitze", 0.0f, 1.0f, 0.25f));
     p.push_back (std::make_unique<P>  (ID { "volume", 1 },      u8 ("Lautst\xc3\xa4rke (dB)"), -48.0f, 6.0f, -4.0f));
+    // Wasserrad (neu in 0.2): das Rad treibt die Hämmer – das Tempo schwingt im Takt, die Eins bleibt fest
+    p.push_back (std::make_unique<P>  (ID { "wasserrad", 1 },   "Wasserrad", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<PC> (ID { "radumlauf", 1 },   "Radumlauf", juce::StringArray { "1/2 Takt", "1 Takt", "2 Takte", "4 Takte" }, 1));
     p.push_back (std::make_unique<P>  (ID { "glut", 1 },        "Glut", 0.0f, 1.0f, 0.3f));
     p.push_back (std::make_unique<P>  (ID { "korn", 1 },        u8 ("Korngr\xc3\xb6\xc3\x9f" "e (ms)"), tmk::skewed (5.0f, 300.0f, 50.0f), 45.0f));
     p.push_back (std::make_unique<P>  (ID { "dichte", 1 },      "Dichte", 0.0f, 1.0f, 0.4f));
@@ -67,7 +70,7 @@ static std::vector<tmk::Preset> factoryPresets()
                                     { "chaos", 0.1f }, { "mutation", 0.15f }, { "glut", 0.15f } } },
         { "Funkenflug",            { { T (4, "sch"), 16 }, { T (4, "hit"), 9 }, { T (4, "tempo"), 6 }, { T (4, "lvl"), 0.7f }, { T (4, "chance"), 0.6f },
                                     { "chaos", 0.7f }, { "glut", 0.45f }, { "korn", 18.0f }, { "dichte", 0.7f }, { "tonhoehe", 7 } } },
-        { "Wasserrad",             { { "chaos", 0.05f }, { "mutation", 0.6f }, { "glut", 0.1f }, { "stotter", 0.05f }, { "swing", 0.25f },
+        { "Wasserrad",             { { "wasserrad", 0.75f }, { "radumlauf", 1 }, { "chaos", 0.05f }, { "mutation", 0.6f }, { "glut", 0.1f }, { "stotter", 0.05f }, { "swing", 0.25f },
                                     { T (0, "sch"), 16 }, { T (0, "hit"), 4 }, { T (2, "sch"), 16 }, { T (2, "hit"), 2 }, { T (2, "dreh"), 4 } } },
         { "Glitch-Geselle",        { { "stotter", 0.8f }, { "glut", 0.7f }, { "chaos", 0.55f }, { "tonhoehe", 12 }, { "rueckwaerts", 0.5f },
                                     { "korn", 30.0f }, { "dichte", 0.6f }, { "hitze", 0.45f } } },
@@ -87,6 +90,7 @@ HammerProcessor::HammerProcessor()
 {
     auto get = [this] (const juce::String& i) { return apvts.getRawParameterValue (i); };
     frei = get ("frei"); swing = get ("swing"); chaos = get ("chaos"); mutation = get ("mutation"); hitze = get ("hitze"); volume = get ("volume");
+    wasserrad = get ("wasserrad"); radumlauf = get ("radumlauf");
     glut = get ("glut"); korn = get ("korn"); dichte = get ("dichte"); tonhoehe = get ("tonhoehe"); rueckwaerts = get ("rueckwaerts");
     stotter = get ("stotter"); streuung = get ("streuung");
     for (int t = 0; t < numTracks; ++t)
@@ -418,6 +422,8 @@ void HammerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     runningNow = running;
 
     const float ch = chaos->load(), sw = swing->load(), mut = mutation->load();
+    const float wheel = wasserrad->load();
+    const double wheelBeats = 2.0 * std::pow (2.0, (double) juce::jlimit (0, 3, (int) radumlauf->load()));   // 2, 4, 8, 16 Schläge
     const float glutAmt = glut->load(), stotterP = stotter->load();
 
     if (running)
@@ -455,8 +461,17 @@ void HammerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
                 if (rng.nextFloat() > chance[t]->load()) continue;
                 double off = juce::jmax (0.0, (k * stepBeats - ppq) / bps);
                 if (k % 2 != 0) off += sw * stepSamples * 0.5;                                  // Swing
+                // Wasserrad: Schläge werden je nach Stellung des Rads gedehnt (0 bei Radbeginn = auf der Eins)
+                float wheelVel = 1.0f;
+                if (wheel > 0.0f)
+                {
+                    double ph = (double) k * stepBeats / wheelBeats; ph -= std::floor (ph);
+                    const double lag = 0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * ph) + 0.15 * std::sin (2.0 * juce::MathConstants<double>::twoPi * ph);
+                    off += juce::jmax (0.0, lag) * wheel * 0.42 * stepSamples;
+                    wheelVel = 1.0f - 0.3f * wheel * (float) (0.5 + 0.5 * std::cos (juce::MathConstants<double>::twoPi * ph));
+                }
                 off += juce::jmax (0.0, (rng.nextDouble() - 0.3) * ch * stepSamples * 0.35);    // Chaos: Timing
-                const float vel = (idx == 0 ? 1.0f : 0.7f + 0.3f * rng.nextFloat()) * (1.0f - 0.3f * ch * rng.nextFloat());
+                const float vel = (idx == 0 ? 1.0f : 0.7f + 0.3f * rng.nextFloat()) * (1.0f - 0.3f * ch * rng.nextFloat()) * wheelVel;
                 pending.push_back ({ (int) off, vel, t });
                 // Chaos: Wirbel (Ratschen) – schnelle Wiederholungen innerhalb des Schritts
                 if (rng.nextFloat() < ch * 0.3f)
