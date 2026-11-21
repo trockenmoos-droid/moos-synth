@@ -36,6 +36,7 @@ public:
     std::atomic<float> fingerLevel[fingers::numFingers] {};
     std::atomic<int>   grainCount[fingers::numFingers] {};
     std::atomic<float> baseMs { 1000.0f };
+    std::atomic<bool> holding { false };
 
 private:
     struct Grain
@@ -60,10 +61,10 @@ private:
     int w = 0;
     Finger fingerState[fingers::numFingers];
     juce::SmoothedValue<float> baseSm, mixSm;
-    float fbLp[2] {}, outLp[2] {};
+    float fbLp[2] {}, outLp[2] {}, holdAmt = 0.0f;
     juce::Random rng;
 
     using AF = std::atomic<float>*;
-    AF sync{}, division{}, timeMs{}, feedback{}, ton{}, korngroesse{}, tonhoehe{}, streuung{}, dichte{}, rueckwaerts{}, breite{}, mix{};
+    AF sync{}, division{}, timeMs{}, feedback{}, ton{}, korngroesse{}, tonhoehe{}, streuung{}, dichte{}, rueckwaerts{}, breite{}, mix{}, festhalten{};
     AF zeit[fingers::numFingers]{}, pegel[fingers::numFingers]{}, pan[fingers::numFingers]{}, korn[fingers::numFingers]{};
 };

@@ -41,7 +41,7 @@ FingersEditor::FingersEditor (FingersProcessor& p)
                           knob ("feedback", "Feedback"), knob ("ton", "Ton") });
     addSection (u8 ("K\xc3\x96RNER"), { knob ("korngroesse", u8 ("Gr\xc3\xb6\xc3\x9f" "e")), knob ("tonhoehe", u8 ("Tonh\xc3\xb6he")),
                                          knob ("streuung", "Streuung"), knob ("dichte", "Dichte"), knob ("rueckwaerts", u8 ("R\xc3\xbc" "ckw\xc3\xa4rts")) });
-    addSection ("AUSGANG", { knob ("breite", "Breite"), knob ("mix", "Mix") });
+    addSection ("AUSGANG", { knob ("breite", "Breite"), knob ("mix", "Mix"), toggle ("festhalten", "FESTHALTEN", 1.3f) });
     finishSetup();
 }
 
@@ -51,7 +51,7 @@ void FingersEditor::layoutBody (juce::Rectangle<int> body)
     layoutSection ("AUSSICHT", body.removeFromTop (h * 27 / 100));
     auto row2 = split (body.removeFromTop (h * 41 / 100), { 1, 1, 1, 1, 1 });
     for (int f = 0; f < fingers::numFingers; ++f) layoutSection ("FINGER " + juce::String (f + 1), row2[(size_t) f]);
-    auto row3 = split (body, { 53, 52, 22 });
+    auto row3 = split (body, { 50, 48, 32 });
     layoutSection ("ZEIT", row3[0]);
     layoutSection (u8 ("K\xc3\x96RNER"), row3[1]);
     layoutSection ("AUSGANG", row3[2]);

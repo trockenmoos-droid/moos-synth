@@ -80,6 +80,34 @@ int main (int argc, char** argv)
                    juce::String::formatted ("Maximum: Spitze=%.3f  Rechenzeit=%.1f%% Echtzeit", tt::peak (out, 0, out.getNumSamples()), ms / 150.0));
     }
 
+    // Festhalten: die Aussicht bleibt stehen, auch ohne Eingang und ohne Feedback – und wächst nicht
+    {
+        auto hold = [&] (bool on)
+        {
+            proc.setCurrentProgram (0);
+            auto setv = [&] (const char* id, float v) { auto* a = proc.apvts.getParameter (id); a->setValueNotifyingHost (a->convertTo0to1 (v)); };
+            setv ("feedback", 0.0f); setv ("mix", 1.0f); setv ("korn3", 0.8f);
+            auto in = tt::plucks (sr, 14.0, 2.0);
+            for (int ch = 0; ch < 2; ++ch) in.clear (ch, (int) (sr * 2.2), in.getNumSamples() - (int) (sr * 2.2));
+            proc.setPlayConfigDetails (2, 2, sr, 512);
+            proc.prepareToPlay (sr, 512);
+            juce::AudioBuffer<float> out (2, in.getNumSamples()), b (2, 512);
+            for (int pos = 0; pos + 512 <= in.getNumSamples(); pos += 512)
+            {
+                if (pos >= (int) (sr * 1.8) && pos < (int) (sr * 1.8) + 512) setv ("festhalten", on ? 1.0f : 0.0f);
+                for (int ch = 0; ch < 2; ++ch) b.copyFrom (ch, 0, in, ch, pos, 512);
+                juce::MidiBuffer m; proc.processBlock (b, m);
+                for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, pos, b, ch, 0, 512);
+            }
+            setv ("festhalten", 0.0f);
+            return std::pair<float, float> { out.getRMSLevel (0, (int) (sr * 5), (int) (sr * 2)), out.getRMSLevel (0, (int) (sr * 11), (int) (sr * 2)) };
+        };
+        auto [a0, b0] = hold (false);
+        auto [a1, b1] = hold (true);
+        tt::check (b0 < 0.001f && a1 > 0.01f && b1 > a1 * 0.5f && b1 < a1 * 1.5f,
+                   juce::String::formatted ("Festhalten: RMS 5 s=%.3f, 11 s=%.3f (ohne: %.4f)", a1, b1, b0));
+    }
+
     // Hörprobe
     {
         auto dry = tt::plucks (sr, 7.0, 2.4);

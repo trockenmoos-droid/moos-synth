@@ -21,6 +21,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "rueckwaerts", 1 }, u8 ("R\xc3\xbc" "ckw\xc3\xa4rts"), 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<P>  (ID { "breite", 1 },      "Breite", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<P>  (ID { "mix", 1 },         "Mix", 0.0f, 1.0f, 0.35f));
+    // Festhalten (neu in 0.2): die Aussicht einfrieren – die Leitung kreist endlos, die Körner wandern weiter darüber
+    p.push_back (std::make_unique<PB> (ID { "festhalten", 1 },  "Festhalten", false));
 
     const float defZeit[]  = { 0.2f, 0.4f, 0.6f, 0.8f, 1.0f };
     const float defPegel[] = { 0.8f, 0.7f, 0.6f, 0.5f, 0.45f };
@@ -54,6 +56,9 @@ static std::vector<tmk::Preset> factoryPresets()
                                    { "feedback", 0.25f }, { "mix", 0.4f } } },
         { "Nebelschwaden",       { { "korn1", 0.5f }, { "korn2", 0.5f }, { "korn3", 0.5f }, { "korn4", 0.5f }, { "korn5", 0.5f },
                                    { "streuung", 1.0f }, { "dichte", 1.0f }, { "korngroesse", 300.0f }, { "feedback", 0.6f }, { "mix", 0.5f }, { "ton", 5000.0f } } },
+        { "Stehende Wolke",      { { "korn1", 1.0f }, { "korn2", 1.0f }, { "korn3", 1.0f }, { "korn4", 1.0f }, { "korn5", 1.0f },
+                                   { "korngroesse", 220.0f }, { "streuung", 0.9f }, { "dichte", 0.85f }, { "rueckwaerts", 0.3f },
+                                   { "feedback", 0.5f }, { "division", 5 }, { "mix", 0.5f } } },
         { "Slapback-Finger",     { { "sync", 0 }, { "time", 400.0f }, { "zeit1", 0.12f }, { "zeit2", 0.25f }, { "zeit3", 0.37f }, { "zeit4", 0.5f },
                                    { "zeit5", 0.62f }, { "feedback", 0.1f }, { "mix", 0.25f } } },
     };
@@ -68,6 +73,7 @@ FingersProcessor::FingersProcessor()
     sync = get ("sync"); division = get ("division"); timeMs = get ("time"); feedback = get ("feedback"); ton = get ("ton");
     korngroesse = get ("korngroesse"); tonhoehe = get ("tonhoehe"); streuung = get ("streuung"); dichte = get ("dichte");
     rueckwaerts = get ("rueckwaerts"); breite = get ("breite"); mix = get ("mix");
+    festhalten = get ("festhalten");
     for (int f = 0; f < numFingers; ++f)
     {
         zeit[f] = get (id ("zeit", f)); pegel[f] = get (id ("pegel", f)); pan[f] = get (id ("pan", f)); korn[f] = get (id ("korn", f));
@@ -88,6 +94,7 @@ void FingersProcessor::prepareToPlay (double sampleRate, int)
     w = 0;
     for (auto& f : fingerState) { for (auto& g : f.grains) g.active = false; f.untilNext = 0.0; }
     fbLp[0] = fbLp[1] = outLp[0] = outLp[1] = 0.0f;
+    holdAmt = 0.0f;
     const double ms = sync->load() > 0.5f ? divisionBeats ((int) division->load()) * 60000.0 / readBpm() : (double) timeMs->load();
     baseSm.reset (sr, 0.3);
     baseSm.setCurrentAndTargetValue ((float) juce::jlimit (10.0, sr * 4.5, ms * 0.001 * sr));
@@ -133,6 +140,9 @@ void FingersProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     const float width   = breite->load();
     const float grainNorm = 1.0f / std::sqrt (juce::jmax (1.0f, overlap * 0.375f));
     const double bufLimit = (double) buf[0].size() - 8.0;
+    const bool hold = festhalten->load() > 0.5f;
+    holding = hold;
+    const float holdStep = 1.0f / (float) (0.03 * sr);
 
     float z[numFingers], lvl[numFingers], pn[numFingers], kn[numFingers];
     for (int f = 0; f < numFingers; ++f) { z[f] = zeit[f]->load(); lvl[f] = pegel[f]->load(); pn[f] = pan[f]->load(); kn[f] = korn[f]->load(); }
@@ -204,8 +214,17 @@ void FingersProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         fbLp[0] = fbL + aTon * (fbLp[0] - fbL);
         fbLp[1] = fbR + aTon * (fbLp[1] - fbR);
         const float inL = L[i], inR = R[i];
-        buf[0][(size_t) w] = inL + std::tanh (fbLp[0] * fb);
-        buf[1][(size_t) w] = inR + std::tanh (fbLp[1] * fb);
+        float wL = inL + std::tanh (fbLp[0] * fb), wR = inR + std::tanh (fbLp[1] * fb);
+        // Festhalten: die Leitung schreibt sich selbst weiter (Schleife = längster Finger), kein neuer Eingang
+        holdAmt = juce::jlimit (0.0f, 1.0f, holdAmt + (hold ? holdStep : -holdStep));
+        if (holdAmt > 0.0f)
+        {
+            const double loopLen = juce::jlimit (64.0, bufLimit, (double) (z[numFingers - 1] * base));
+            wL += holdAmt * (readCh (0, loopLen) - wL);
+            wR += holdAmt * (readCh (1, loopLen) - wR);
+        }
+        buf[0][(size_t) w] = wL;
+        buf[1][(size_t) w] = wR;
         if (++w >= (int) buf[0].size()) w = 0;
 
         // Ausgang: Ton, Breite, Mix
