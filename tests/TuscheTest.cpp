@@ -28,6 +28,14 @@ static int zeroCrossings (const juce::AudioBuffer<float>& b, int start, int num)
     return z;
 }
 
+// Helligkeit: Verhältnis Steigung zu Pegel (höher = mehr Höhen)
+static float brightness (const juce::AudioBuffer<float>& b, int start, int num)
+{
+    double d = 0.0, x = 0.0;
+    for (int i = start + 1; i < start + num; ++i) { const double s = b.getSample (0, i), p = b.getSample (0, i - 1); d += (s - p) * (s - p); x += s * s; }
+    return x > 0.0 ? (float) std::sqrt (d / x) : 0.0f;
+}
+
 // Noten: (Zeit in s, Note, an/aus)
 static std::function<void (int, juce::MidiBuffer&)> notes (double sr, std::vector<std::tuple<double, int, bool>> ev, TestHead* head = nullptr,
                                                             std::function<bool (double)> play = {})
@@ -201,6 +209,41 @@ int main (int argc, char** argv)
                    juce::String::formatted ("Ableton-Szenario %d: %.0f s spielen, 60 s Stopp: Spitze=%.3f, nach Stopp=%.5f", round, playFor, worst, worstAfterStop));
     }
 
+    // Trocknen: nass beginnt dumpf und verschwimmend, später trocken und hell
+    {
+        auto measure = [&] (float wet)
+        {
+            proc.setCurrentProgram (0);
+            setP (proc, "nass", wet); setP (proc, "trocknen", 2500.0f); setP (proc, "quelle", 1.0f);
+            auto out = tt::run (proc, zeros (sr, 5.0), sr, notes (sr, { { 0.05, 60, true } }));
+            const int a = (int) (1000.0f * brightness (out, (int) (0.2 * sr), (int) (0.5 * sr))), b = (int) (1000.0f * brightness (out, (int) (3.6 * sr), (int) (0.5 * sr)));
+            const float ra = out.getRMSLevel (0, (int) (0.3 * sr), (int) (0.6 * sr)), rb = out.getRMSLevel (0, (int) (3.6 * sr), (int) (0.6 * sr));
+            return std::tuple<int, int, float, float, float> { a, b, ra, rb, tt::peak (out, 0, out.getNumSamples()) };
+        };
+        auto [a0, b0, ra0, rb0, p0] = measure (0.0f);
+        auto [a1, b1, ra1, rb1, p1] = measure (1.0f);
+        tt::check (a1 < b1 * 0.7 && std::abs (a0 - b0) < b0 * 0.25 && p1 <= 1.0f && ra1 > 0.01f && rb1 > 0.01f,
+                   juce::String::formatted ("Trocknen: Helligkeit nass %d -> trocken %d (ohne: %d -> %d), RMS %.3f/%.3f (ohne %.3f/%.3f), Spitze %.3f",
+                                            a1, b1, a0, b0, ra1, rb1, ra0, rb0, p1));
+        // Modrad taucht den Pinsel wieder ein
+        proc.setCurrentProgram (0);
+        setP (proc, "nass", 1.0f); setP (proc, "trocknen", 800.0f); setP (proc, "quelle", 1.0f);
+        auto out = tt::run (proc, zeros (sr, 4.0), sr, [&] (int pos, juce::MidiBuffer& m)
+        {
+            if (pos == 0) m.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+            const int at = (int) (2.5 * sr);
+            if (at >= pos && at < pos + 512) m.addEvent (juce::MidiMessage::controllerEvent (1, 1, 127), at - pos);
+        });
+        const int dryZ = (int) (1000.0f * brightness (out, (int) (1.8 * sr), (int) (0.5 * sr))), wetZ = (int) (1000.0f * brightness (out, (int) (2.7 * sr), (int) (0.5 * sr)));
+        tt::check (wetZ < dryZ * 0.75, juce::String::formatted ("Modrad macht wieder nass: Helligkeit %d -> %d", dryZ, wetZ));
+        proc.setCurrentProgram (0);
+    }
+    {
+        proc.setCurrentProgram (proc.getNumPrograms() - 2);    // Nass in Nass
+        auto demo = tt::run (proc, zeros (sr, 10.0), sr, notes (sr, { { 0.05, 57, true }, { 0.05, 64, true }, { 5.0, 60, true }, { 5.0, 67, true } }));
+        tt::writeWav (dir.getChildFile ("tusche_trocknen.wav"), demo, sr);
+    }
+
     // Hörprobe
     {
         const int sel[] = { 1, 3, 5, 7, 12 };
@@ -223,6 +266,7 @@ int main (int argc, char** argv)
     proc.setCurrentProgram (10);   // Partitur · Blatt lesen
     proc.setSheet (1);
     setP (proc, "auswahl", 5.0f);
+    setP (proc, "nass", 0.8f);
     tt::run (proc, zeros (sr, 2.0), sr, notes (sr, { { 0.05, 60, true }, { 0.05, 67, true } }));
     tt::waitForTexture ("tusche", [] { return juce::ImageFileFormat::loadFrom (TuscheAssets::papier_jpg, (size_t) TuscheAssets::papier_jpgSize); }, dir);
     tt::screenshots<TuscheEditor> (proc, dir, "tusche", 1);

@@ -104,8 +104,14 @@ void InkDisplay::paint (juce::Graphics& g)
         if (glow < 0.05f) continue;
         const float x = wa.getX() + proc.grainView[i].pos.load() * wa.getWidth();
         const float y = mid - proc.grainView[i].pan.load() * hh * 0.7f;
-        const float sz = 3.0f + 9.0f * glow;
+        const float wet = proc.grainView[i].wet.load();
+        const float sz = (3.0f + 9.0f * glow) * (1.0f + 1.6f * wet);
         juce::Random dr (i * 13);
+        if (wet > 0.05f)                // nasse Körner verlaufen ins Papier
+        {
+            g.setColour (paper.withAlpha (0.12f * glow * wet));
+            g.fillEllipse (x - sz, y - sz * 0.7f, sz * 2.0f, sz * 1.4f);
+        }
         g.setColour (paper.withAlpha (0.35f + 0.6f * glow));
         g.fillEllipse (x - sz * 0.5f, y - sz * 0.35f, sz, sz * (0.5f + 0.4f * dr.nextFloat()));
         g.setColour (paper.withAlpha (0.4f * glow));
@@ -400,6 +406,53 @@ void EnvView::paint (juce::Graphics& g)
     dryStroke (g, p, 4.0f, ink::ink, rnd, 0.5f);
 }
 
+void DryView::paint (juce::Graphics& g)
+{
+    using namespace ink;
+    auto r = getLocalBounds().toFloat().reduced (8.0f, 10.0f);
+    const float depth = proc.apvts.getRawParameterValue ("nass")->load();
+    const float mid = r.getCentreY() - 3.0f;
+    juce::Random rnd (77);
+    // nasser Teil: überlappende, weiche Tupfer, die nach außen verlaufen
+    const int n = 46;
+    for (int k = 0; k < n; ++k)
+    {
+        const float t = (float) k / (n - 1);
+        const float w = std::exp (-3.0f * t);                       // Nässe entlang der Zeit
+        const float wd = depth * w;
+        const float x = r.getX() + t * r.getWidth();
+        const float thick = 1.6f + 15.0f * wd;
+        if (wd > 0.05f)
+        {
+            g.setColour (ink::ink.withAlpha (0.05f + 0.08f * wd));
+            const float bleed = thick * (1.2f + 0.6f * rnd.nextFloat());
+            g.fillEllipse (x - bleed * 0.6f, mid - bleed * 0.5f + (rnd.nextFloat() - 0.5f) * 2.0f, bleed * 1.2f, bleed);
+        }
+        g.setColour (ink::ink.withAlpha (0.25f + 0.55f * (1.0f - 0.5f * wd)));
+        const float h = thick * (0.55f + 0.25f * rnd.nextFloat());
+        if (rnd.nextFloat() > 0.25f * (1.0f - wd) || wd > 0.3f)      // trocken: der Strich reißt ab
+            g.fillEllipse (x - 2.6f, mid - h * 0.5f, 5.2f, h);
+    }
+    // trockene Fasern am Ende
+    juce::Path fib;
+    fib.startNewSubPath (r.getX() + r.getWidth() * 0.55f, mid);
+    fib.lineTo (r.getRight(), mid + 0.5f);
+    dryStroke (g, fib, 2.4f, ink::ink.withAlpha (0.6f), rnd, 0.9f);
+
+    // grüner Tropfen: wie nass die Note gerade ist
+    const float now = proc.wetNow.load();
+    if (depth > 0.01f && now > 0.01f)
+    {
+        const float t = juce::jlimit (0.0f, 1.0f, -std::log (juce::jlimit (1.0e-4f, 1.0f, now / depth)) / 3.0f);
+        const float x = r.getX() + t * r.getWidth();
+        g.setColour (green.withAlpha (0.85f));
+        g.fillEllipse (x - 4.5f, mid - 15.0f - 4.5f, 9.0f, 10.0f);
+        g.drawLine (x, mid - 9.0f, x, mid + 9.0f, 1.0f);
+    }
+    pencilText (g, "nass", { r.getX(), r.getBottom() - 12.0f, 60.0f, 12.0f }, juce::Justification::centredLeft, 9.5f);
+    pencilText (g, "trocken", { r.getRight() - 60.0f, r.getBottom() - 12.0f, 60.0f, 12.0f }, juce::Justification::centredRight, 9.5f);
+}
+
 //==============================================================================
 static tmk::Theme inkTheme()
 {
@@ -429,7 +482,7 @@ tmk::Editor::Config TuscheEditor::makeConfig (TuscheProcessor& p)
 }
 
 TuscheEditor::TuscheEditor (TuscheProcessor& p)
-    : tmk::Editor (p, makeConfig (p)), tp (p), inkLnf (cfg.theme), display (p), steps (p), env (p)
+    : tmk::Editor (p, makeConfig (p)), tp (p), inkLnf (cfg.theme), display (p), steps (p), env (p), dry (p)
 {
     setLookAndFeel (&inkLnf);
     if (auto* kb = getKeyboard())
@@ -469,6 +522,7 @@ TuscheEditor::TuscheEditor (TuscheProcessor& p)
                                       knob ("release", "Release") });
     addSection ("PARTITUR", { toggle ("partitur", "Blatt lesen", 1.2f), combo ("takte", juce::String::fromUTF8 ("L\xc3\xa4nge"), 1.2f),
                               knob ("einfluss", "Einfluss") });
+    addSection ("TROCKNEN", { custom (dry, 1.7f), knob ("nass", u8 ("N\xc3\xa4sse")), knob ("trocknen", "Trockenzeit") });
     addSection ("STRICHE", { custom (steps, 1.0f) });
     addSection ("STRICH", chopItems);
     addSection ("KLANG", { knob ("tief", "Tiefpass"), knob ("hoch", "Hochpass"), knob ("reso", "Resonanz"), knob ("raumgr", "Raum"),
@@ -508,11 +562,12 @@ void TuscheEditor::tick()
 
 void TuscheEditor::layoutBody (juce::Rectangle<int> body)
 {
-    auto top = body.removeFromTop (body.getHeight() * 53 / 100);
+    auto top = body.removeFromTop (body.getHeight() * 59 / 100);
     layoutSection ("BLATT", top.removeFromLeft (top.getWidth() * 60 / 100));
-    const int h3 = top.getHeight() / 3;
-    layoutSection ("SPIEL", top.removeFromTop (h3));
-    layoutSection ("PARTITUR", top.removeFromTop (h3));
+    const int h4 = top.getHeight() / 4;
+    layoutSection ("SPIEL", top.removeFromTop (h4));
+    layoutSection ("PARTITUR", top.removeFromTop (h4));
+    layoutSection ("TROCKNEN", top.removeFromTop (h4));
     layoutSection (juce::String::fromUTF8 ("H\xc3\x9cLLE"), top);
     layoutSection ("STRICHE", body.removeFromTop (96));
     auto bottom = split (body, { 6, 5 });

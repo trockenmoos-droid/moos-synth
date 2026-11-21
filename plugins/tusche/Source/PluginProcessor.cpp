@@ -30,6 +30,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<PB> (ID { "partitur", 1 }, "Partitur", false));
     p.push_back (std::make_unique<PC> (ID { "takte", 1 },    u8 ("Partitur-L\xc3\xa4nge"), scoreLens, 2));
     p.push_back (std::make_unique<P>  (ID { "einfluss", 1 }, "Partitur-Einfluss", 0.0f, 1.0f, 0.75f));
+    // Trocknen: jede Note beginnt nass (lange, weiche, verschwimmende Körner) und trocknet zu kurzen, harten Körnern
+    p.push_back (std::make_unique<P>  (ID { "nass", 1 },     u8 ("N\xc3\xa4sse"), 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<P>  (ID { "trocknen", 1 }, "Trockenzeit (ms)", tmk::skewed (100.0f, 20000.0f, 2500.0f), 3000.0f));
     for (int c = 0; c < numChops; ++c)
     {
         const juce::String n = "Strich " + juce::String (c + 1);
@@ -124,6 +127,15 @@ namespace
             { "Strich \xc2\xb7 Glasharfe",
               { { "quelle", 1 }, { "modus", 2 }, { "attack", 4.0f }, { "decay", 1200.0f }, { "sustain", 0.4f }, { "release", 1500.0f } },
               [penta] (int c, juce::Random&, float* v) { v[0] = 0.05f; v[1] = 200.0f; v[2] = 0.72f; v[3] = 0.05f; v[4] = 0.5f; v[5] = (float) penta[c]; } },
+            { "Lavierung \xc2\xb7 Nass in Nass",
+              { { "quelle", 2 }, { "modus", 0 }, { "nass", 1.0f }, { "trocknen", 7000.0f }, { "attack", 250.0f }, { "release", 3000.0f },
+                { "raumgr", 0.7f }, { "wandern", 0.05f } },
+              [] (int, juce::Random&, float* v) { v[1] = 140.0f; v[2] = 0.7f; v[3] = 0.12f; v[4] = 0.45f; } },
+            { "Druck \xc2\xb7 Trockener Pinsel",
+              { { "quelle", 0 }, { "modus", 1 }, { "schritt", 3 }, { "nass", 0.85f }, { "trocknen", 450.0f }, { "attack", 2.0f },
+                { "decay", 260.0f }, { "sustain", 0.45f }, { "release", 150.0f } },
+              [] (int c, juce::Random& r, float* v) { v[0] = r.nextFloat(); v[1] = 70.0f; v[2] = 0.72f; v[3] = 0.1f; v[4] = 0.2f;
+                                                      v[5] = (float) ((c % 8 == 4) ? 7 : (c % 8 == 6 ? 12 : 0)); } },
         });
     }
 }
@@ -256,6 +268,7 @@ TuscheProcessor::TuscheProcessor()
     wandern = get ("wandern"); attack = get ("attack"); decay = get ("decay"); sustain = get ("sustain"); release = get ("release");
     tief = get ("tief"); hoch = get ("hoch"); reso = get ("reso"); raumGroesse = get ("raumgr"); ausgang = get ("ausgang");
     partitur = get ("partitur"); takte = get ("takte"); einfluss = get ("einfluss");
+    nass = get ("nass"); trocknen = get ("trocknen");
     for (int c = 0; c < numChops; ++c)
     {
         for (int k = 0; k < numChopParams; ++k) chopP[c][k] = get (cid (c, chopParams[k]));
@@ -493,7 +506,14 @@ void TuscheProcessor::noteOn (int note, float vel)
     if (mode == 0) { v.chop = juce::jlimit (0, numChops - 1, (int) auswahl->load() - 1); v.pitch = (float) (note - 60); }
     else            { v.chop = ((note - 60) % numChops + numChops) % numChops; v.pitch = 0.0f; }
     v.scan = 0.0; v.untilGrain = 0.0; v.gateLeft = -1;
+    wetVoice (v, vel);
     v.env.reset(); v.env.noteOn();
+}
+
+// frische Tusche: Anschlagstärke = wie viel Tusche im Pinsel ist
+void TuscheProcessor::wetVoice (Voice& v, float vel)
+{
+    v.wet = juce::jlimit (0.0f, 1.0f, 0.3f + 0.7f * vel);
 }
 
 void TuscheProcessor::noteOff (int note)
@@ -522,9 +542,13 @@ void TuscheProcessor::spawnGrain (int vi, const Source& src, double interval)
     const int L = src.data.getNumSamples();
     auto& g = grains[slot];
 
-    double pos = chopValue (c, 0) + v.scan + chaos * (rng.nextDouble() * 2.0 - 1.0) * 0.08;
+    // Trocknen: depth = wie stark der Effekt wirkt, u = wie nass die Note gerade ist
+    const float depth = nass->load(), u = depth > 0.0f ? v.wet : 0.0f, wd = depth * u;
+    double pos = chopValue (c, 0) + v.scan + chaos * (rng.nextDouble() * 2.0 - 1.0) * 0.08
+               + wd * 0.035 * (rng.nextDouble() * 2.0 - 1.0);                                   // nass: verläuft
     pos -= std::floor (pos);
-    int len = (int) (chopValue (c, 1) * 0.001 * sr * (1.0 + chaos * (rng.nextDouble() - 0.5) * 0.8));
+    const double lenMul = 1.0 + depth * (-0.55 + 4.0 * u * u);                                 // nass lang, trocken kurz
+    int len = (int) (chopValue (c, 1) * lenMul * 0.001 * sr * (1.0 + chaos * (rng.nextDouble() - 0.5) * 0.8));
     len = juce::jlimit (32, (int) (sr * 2.0), len);
     // Partitur: Schwerpunkt der Tusche -> Tonhöhe (Moll-Pentatonik), Rauheit -> Chaos, Schwärze -> Lautstärke
     const float inf = scoreNow.on ? einfluss->load() : 0.0f;
@@ -538,6 +562,7 @@ void TuscheProcessor::spawnGrain (int vi, const Source& src, double interval)
     }
     float semis = chopValue (c, 5) + v.pitch + scoreSemis + (chaos + inf * scoreNow.rough * 0.5f) * 0.4f * (rng.nextFloat() - 0.5f);
     if (chaos > 0.55f && rng.nextFloat() < (chaos - 0.55f) * 0.9f) semis += rng.nextBool() ? 12.0f : -12.0f;   // Oktavsprünge
+    semis += wd * 0.9f * (rng.nextFloat() - 0.5f);                                                            // nass: Tonhöhe schwimmt
     double step = std::pow (2.0, semis / 12.0) * src.rate / sr;
     double start = pos * L;
     if (rng.nextFloat() < chaos * 0.3f) { start += len * step; step = -step; }                                 // rückwärts
@@ -551,6 +576,15 @@ void TuscheProcessor::spawnGrain (int vi, const Source& src, double interval)
     g.amp = v.vel / (float) std::sqrt (juce::jmax (1.0, overlap)) * (1.0f - inf * 0.6f * (1.0f - scoreNow.dark));
     g.send = chopValue (c, 4);
     g.viewPos = (float) pos;
+    g.wet = wd;
+    {
+        const float fc = wd < 0.01f ? 0.0f : 20000.0f * std::pow (0.03f, std::sqrt (wd));  // nass: dumpf (bis ~600 Hz)
+        g.lpA = fc <= 0.0f ? 1.0f : 1.0f - std::exp (-juce::MathConstants<float>::twoPi * juce::jmin (fc, (float) sr * 0.45f) / (float) sr);
+        g.lpL = g.lpR = 0.0f;
+    }
+    g.edge = depth * (1.0f - u) * (1.0f - u) * 2.5f;                                         // trocken: harte, kratzige Kanten
+    g.amp /= 1.0f + 0.18f * g.edge;                                                            // gleich laut trotz breiterem Fenster
+    g.sag = std::pow (2.0, -wd * 0.45 / 12.0 / juce::jmax (1, len));                          // nass: rinnt um bis zu ~½ HT nach unten
     chopGlow[c] = 1.0f;
 }
 
@@ -583,6 +617,9 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     for (auto& v : voices) v.env.setParameters (adsr);
     const double scanPerSample = wandern->load() * 0.12 / sr;
     const double stepLen = stepBeats ((int) schritt->load());
+    // Trocknen: Trockenzeit = bis die Note praktisch trocken ist (~5 % Rest)
+    const float dryCoef = std::exp (-3.0f / (trocknen->load() * 0.001f * (float) sr));
+    const float wetDepth = nass->load();
 
     // Filter
     const float q = 0.6f + 5.5f * reso->load() * reso->load();
@@ -606,6 +643,12 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             const auto m = (*mit).getMessage();
             if (m.isNoteOn()) noteOn (m.getNoteNumber(), m.getFloatVelocity());
             else if (m.isNoteOff()) noteOff (m.getNoteNumber());
+            else if (m.isController() && m.getControllerNumber() == 1)
+            {
+                // Modrad: Pinsel wieder eintauchen – klingende Noten werden wieder nass
+                modWheel = m.getControllerValue() / 127.0f;
+                for (auto& v : voices) if (v.active) v.wet = juce::jmax (v.wet, modWheel);
+            }
             else if (m.isAllNotesOff() || m.isAllSoundOff())
             {
                 for (auto& v : voices) { v.env.noteOff(); v.keyDown = false; }
@@ -632,6 +675,7 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
                     if (chopOn[c]->load() > 0.5f)
                     {
                         v.active = true;
+                        wetVoice (v, v.vel);
                         v.env.noteOn();
                         v.gateLeft = (int) (stepLen / bps * 0.85);
                         v.untilGrain = 0.0;
@@ -659,11 +703,13 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             if (! v.active) { v.envNow = 0.0f; continue; }
             v.envNow = v.env.getNextSample();
             v.scan += scanPerSample;
+            v.wet = juce::jmax (v.wet * dryCoef, modWheel);
             if (! v.env.isActive()) continue;
             const float dens = chopValue (v.chop, 2);
             double interval;
             if (synced) interval = divBeats (juce::roundToInt (dens * 8.0f)) / bps;
             else        interval = sr / (1.0 + dens * dens * 79.0);
+            interval *= 1.0 - 0.35 * wetDepth * v.wet;                     // nass: Körner fließen ineinander
             if (scoreNow.on)
             {
                 // dunkle Stellen: dichter, helles Papier: dünner bis still
@@ -690,14 +736,18 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             if (! g.active) continue;
             ++voiceGrains[g.voice];
             const float t = (float) g.age / (float) g.len;
-            const float w = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * t);
+            float w = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * t);
+            if (g.edge > 0.0f) w = juce::jmin (1.0f, w * (1.0f + g.edge));      // trocken: flacher Rücken, steile Kanten
             double p = g.pos;
             p -= std::floor (p / L) * L;
             const int i0 = juce::jlimit (0, L - 1, (int) p), i1 = i0 + 1 >= L ? 0 : i0 + 1;
             const float x = (sd[i0] + (float) (p - i0) * (sd[i1] - sd[i0])) * w * g.amp * voices[g.voice].envNow;
-            dl += x * g.gl; dr += x * g.gr;
-            sl += x * g.gl * g.send; srr += x * g.gr * g.send;
+            float xl = x * g.gl, xr = x * g.gr;
+            if (g.lpA < 1.0f) { g.lpL += g.lpA * (xl - g.lpL); g.lpR += g.lpA * (xr - g.lpR); xl = g.lpL; xr = g.lpR; }
+            dl += xl; dr += xr;
+            sl += xl * g.send; srr += xr * g.send;
             g.pos += g.step;
+            g.step *= g.sag;
             if (++g.age >= g.len) g.active = false;
         }
         for (int vi = 0; vi < maxVoices; ++vi)
@@ -747,10 +797,16 @@ void TuscheProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             grainView[gi].pos = (float) (p / L);
             grainView[gi].glow = std::sin (juce::MathConstants<float>::pi * t);
             grainView[gi].pan = g.gr - g.gl;
+            grainView[gi].wet = g.wet;
         }
         else grainView[gi].glow = grainView[gi].glow.load() * 0.7f;
     }
     for (auto& cg : chopGlow) cg = cg.load() * 0.9f;
+    {
+        float w = 0.0f;
+        for (auto& v : voices) if (v.active && v.env.isActive()) w = juce::jmax (w, v.wet);
+        wetNow = w * wetDepth;
+    }
 }
 
 juce::AudioProcessorEditor* TuscheProcessor::createEditor() { return new TuscheEditor (*this); }

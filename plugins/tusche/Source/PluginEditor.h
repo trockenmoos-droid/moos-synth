@@ -319,6 +319,18 @@ private:
     TuscheProcessor& proc;
 };
 
+// Trocknen: ein Pinselstrich von nass (breit, verlaufen) bis trocken (dünn, kratzig); grüner Tropfen = jetzt
+class DryView : public juce::Component, private juce::Timer
+{
+public:
+    explicit DryView (TuscheProcessor& p) : proc (p) { startTimerHz (20); }
+    ~DryView() override { stopTimer(); }
+    void paint (juce::Graphics&) override;
+private:
+    void timerCallback() override { repaint(); }
+    TuscheProcessor& proc;
+};
+
 //==============================================================================
 class TuscheEditor : public tmk::Editor
 {
@@ -339,6 +351,7 @@ private:
     InkDisplay display;
     StepRow steps;
     EnvView env;
+    DryView dry;
     std::vector<std::unique_ptr<ChopKnob>> chopKnobs;
     int shownChop = -1;
 };

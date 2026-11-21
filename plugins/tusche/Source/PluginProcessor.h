@@ -69,10 +69,11 @@ public:
     std::atomic<int> sheetChanges { 0 };
 
     // Anzeige: Körner (Position 0..1 im Sample, Leuchten), aktueller Schritt, aktive Striche
-    struct GrainView { std::atomic<float> pos { 0 }, glow { 0 }, pan { 0 }; };
+    struct GrainView { std::atomic<float> pos { 0 }, glow { 0 }, pan { 0 }, wet { 0 }; };
     GrainView grainView[tusche::maxGrains];
     std::atomic<int> currentStep { -1 };
     std::atomic<float> chopGlow[tusche::numChops] {};
+    std::atomic<float> wetNow { 0.0f };          // Nässe der feuchtesten Stimme (0..1, für die Anzeige)
 
 private:
     struct Voice
@@ -84,6 +85,7 @@ private:
         juce::ADSR env;
         float envNow = 0.0f;
         int gateLeft = -1;          // Schritt-Modus: Samples bis zum Loslassen
+        float wet = 0.0f;           // Trocknen: wie nass die Tusche dieser Note noch ist (0..1)
     };
     struct Grain
     {
@@ -92,6 +94,10 @@ private:
         double pos = 0.0, step = 1.0;
         float gl = 0.0f, gr = 0.0f, amp = 1.0f, send = 0.0f;
         float viewPos = 0.0f;
+        float wet = 0.0f;           // Nässe beim Entstehen (Anzeige)
+        float lpA = 1.0f, lpL = 0.0f, lpR = 0.0f;   // nasse Körner: weicher (einpoliger Tiefpass)
+        float edge = 0.0f;          // trockene Körner: härtere Kanten
+        double sag = 1.0;           // nasse Körner zerfließen leicht nach unten
     };
 
     void noteOn (int note, float vel);
@@ -101,6 +107,7 @@ private:
     struct ScoreNow { bool on = false; float dark = 1.0f, centre = 0.5f, rough = 0.0f; };
     ScoreNow scoreAt (double beat) const;
     ScoreNow scoreNow;
+    void wetVoice (Voice&, float vel);
     float chopValue (int chop, int param) const { return chopP[chop][param]->load(); }
     void stateRestored() override;
     void setUserSource (std::unique_ptr<Source>);
@@ -138,6 +145,8 @@ private:
     AF attack{}, decay{}, sustain{}, release{};
     AF tief{}, hoch{}, reso{}, raumGroesse{}, ausgang{};
     AF partitur{}, takte{}, einfluss{};
+    AF nass{}, trocknen{};
+    float modWheel = 0.0f;
     AF chopP[tusche::numChops][tusche::numChopParams] {};
     AF chopOn[tusche::numChops] {};
 };
