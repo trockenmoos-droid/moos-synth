@@ -121,6 +121,12 @@ if(TM_BUILD_TESTS)
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${first}${rest}Test.cpp)
             tm_add_test(${first}${rest}Test tests/${first}${rest}Test.cpp
                         plugins/${p}/Source/PluginProcessor.cpp plugins/${p}/Source/PluginEditor.cpp)
+            # Versionsnummer wie im echten Plugin, damit die Screenshots sie zeigen
+            file(READ ${CMAKE_CURRENT_SOURCE_DIR}/plugins/${p}/CMakeLists.txt _pcm)
+            string(REGEX MATCH "(TRUE|FALSE) ([0-9]+\\.[0-9]+\\.[0-9]+)" _pv "${_pcm}")
+            if(CMAKE_MATCH_2)
+                target_compile_definitions(${first}${rest}Test PRIVATE JucePlugin_VersionString="${CMAKE_MATCH_2}")
+            endif()
             if(TARGET ${p}_assets)
                 target_link_libraries(${first}${rest}Test PRIVATE ${p}_assets)
             endif()
