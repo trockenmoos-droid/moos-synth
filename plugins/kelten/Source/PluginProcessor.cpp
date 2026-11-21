@@ -21,6 +21,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "alter", 1 },     "Alter", 0.0f, 1.0f, 0.3f));
     p.push_back (std::make_unique<P>  (ID { "hall", 1 },      u8 ("H\xc3\xb6hle"), 0.0f, 1.0f, 0.35f));
     p.push_back (std::make_unique<P>  (ID { "volume", 1 },    u8 ("Lautst\xc3\xa4rke (dB)"), -48.0f, 6.0f, -6.0f));
+    // Heer (neu in 0.2): bis zu drei weitere Carnyx-Bläser, verstimmt, verspätet, im Raum verteilt
+    p.push_back (std::make_unique<P>  (ID { "heer", 1 },      "Heer", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<P>  (ID { "zerstreuung", 1 }, "Zerstreuung", 0.0f, 1.0f, 0.35f));
     return { p.begin(), p.end() };
 }
 
@@ -36,6 +39,8 @@ static std::vector<tmk::Preset> factoryPresets()
                                   { "erde", 0.0f }, { "rost", 0.0f }, { "alter", 0.1f } } },
         { "Grabhügel",          { { "carnyx", 0.5f }, { "bordun", 0.7f }, { "bordunTon", 9 }, { "erde", 0.6f }, { "alter", 0.7f }, { "hall", 0.7f },
                                   { "attack", 1.5f }, { "release", 3.0f }, { "hell", 0.3f } } },
+        { "Heerschau am D\xc3\xbcrrnberg", { { "heer", 1.0f }, { "zerstreuung", 0.45f }, { "growl", 0.55f }, { "zunge", 0.45f }, { "hell", 0.65f },
+                                  { "anblasen", 0.6f }, { "bordun", 0.25f }, { "hall", 0.55f } } },
         { "Eisenzeit-Bass",     { { "carnyx", 1.0f }, { "hell", 0.4f }, { "growl", 0.6f }, { "attack", 0.01f }, { "release", 0.15f }, { "bordun", 0.0f },
                                   { "rost", 0.35f }, { "hall", 0.1f } } },
     };
@@ -49,6 +54,7 @@ KeltenProcessor::KeltenProcessor()
     carnyx = get ("carnyx"); growl = get ("growl"); zunge = get ("zunge"); anblasen = get ("anblasen"); hell = get ("hell");
     attack = get ("attack"); release = get ("release"); bordun = get ("bordun"); bordunTon = get ("bordunTon"); quinte = get ("quinte");
     erde = get ("erde"); rost = get ("rost"); alter = get ("alter"); hall = get ("hall"); volume = get ("volume");
+    heer = get ("heer"); zerstreuung = get ("zerstreuung");
 }
 
 bool KeltenProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -83,6 +89,7 @@ void KeltenProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     if (wet.getNumSamples() < n) wet.setSize (2, n, false, false, true);
 
     kp.carnyx = carnyx->load(); kp.growl = growl->load(); kp.zunge = zunge->load(); kp.anblasen = anblasen->load(); kp.hell = hell->load();
+    kp.heer = heer->load(); kp.zerstreuung = zerstreuung->load();
     const juce::ADSR::Parameters ep { attack->load(), 0.2f, 0.85f, release->load() };
     for (auto& v : voices.voices) v.env.setParameters (ep);
 

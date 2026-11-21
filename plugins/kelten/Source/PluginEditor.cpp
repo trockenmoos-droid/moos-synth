@@ -37,6 +37,7 @@ KeltenEditor::KeltenEditor (KeltenProcessor& p)
     addSection ("BORDUN", { knob ("bordun", "Pegel"), combo ("bordunTon", "Ton", 1.1f), knob ("quinte", "Quinte") });
     addSection ("EISENZEIT", { knob ("erde", "Erde"), knob ("rost", "Rost"), knob ("alter", "Alter") });
     addSection ("AUSGANG", { knob ("hall", u8 ("H\xc3\xb6hle")), knob ("volume", u8 ("Lautst\xc3\xa4rke")) });
+    addSection ("HEER", { knob ("heer", "Heer"), knob ("zerstreuung", "Zerstreuung") });
     finishSetup();
 }
 
@@ -45,8 +46,9 @@ void KeltenEditor::layoutBody (juce::Rectangle<int> body)
     const int rowH = body.getHeight() / 3;
     layoutSection ("ANSICHT", split (body.removeFromTop (rowH), { 5, 4 })[0]);
     layoutSection ("CARNYX", body.removeFromTop (rowH));
-    auto r3 = split (body, { 3, 3, 2 });
+    auto r3 = split (body, { 3, 3, 2, 2 });
     layoutSection ("BORDUN", r3[0]);
     layoutSection ("EISENZEIT", r3[1]);
-    layoutSection ("AUSGANG", r3[2]);
+    layoutSection ("HEER", r3[2]);
+    layoutSection ("AUSGANG", r3[3]);
 }
