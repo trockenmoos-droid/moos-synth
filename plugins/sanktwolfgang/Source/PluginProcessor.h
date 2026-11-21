@@ -19,6 +19,11 @@ namespace wolfgang
     // Fußtonlagen: 16' 8' 4' 2 2/3' 2' 1 3/5' Mixtur(1' + 2/3')
     inline const float rankRatio[numRanks] = { 0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 8.0f };
     inline const char* rankIds[numRanks]   = { "r16", "r8", "r4", "r223", "r2", "r135", "mixtur" };
+    // Geläut: gehaltene Töne werden wie ein Turmgeläut der Reihe nach angeschlagen
+    inline const juce::StringArray ringModes { "Aus", "Runden", "Plain Hunt", "Zufall" };
+    inline const juce::StringArray ringRates { "1/4", "1/8", "1/8T", "1/16" };
+    inline double ringBeats (int i) { const double v[] = { 1.0, 0.5, 1.0 / 3.0, 0.25 }; return v[juce::jlimit (0, 3, i)]; }
+    constexpr int maxBells = 12;
 }
 
 struct WolfgangParams
@@ -79,6 +84,8 @@ public:
 
     juce::MidiKeyboardState keyboardState;
     std::atomic<float> bellLevel { 0.0f }, organLevel { 0.0f };
+    // für die Anzeige: zuletzt angeschlagene Glocke (Index in der Reihe, 0 = höchste) und Anzahl
+    std::atomic<int> ringBell { -1 }, ringCount { 0 }, ringStrikes { 0 };
 
 private:
     tmk::VoiceManager<WolfgangVoice, 16> voices;
@@ -90,5 +97,17 @@ private:
     using AF = std::atomic<float>*;
     AF glocke{}, groesse{}, terz{}, material{}, schwebung{}, anschlag{}, daempfung{};
     AF ranks[wolfgang::numRanks]{}, orgel{}, chiff{}, wind{}, tremulant{}, oAttack{}, oRelease{};
-    AF hall{}, hallZeit{}, volume{};
+    AF hall{}, hallZeit{}, volume{}, gelaeut{}, schlag{};
+
+    // Geläut
+    void ringMidi (const juce::MidiBuffer& in, juce::MidiBuffer& out, int n);
+    std::vector<int> bells;                 // gehaltene Töne, hoch -> tief
+    int row[wolfgang::maxBells] {};
+    int rowPos = 0, rowCount = 0;
+    double untilStrike = 0.0;
+    bool gap = false;
+    struct Pending { int note; int left; };
+    std::vector<Pending> pendingOff;
+    juce::MidiBuffer ringBuf;
+    juce::Random ringRng;
 };

@@ -10,6 +10,9 @@ namespace alm
 {
     inline const juce::StringArray instruments { "Zither", "Hackbrett", "Kuhglocke", "Jodler" };
     enum { zither, hackbrett, kuhglocke, jodler };
+    // Wirbel: gehaltene Töne werden schnell wiederholt angeschlagen (Hackbrett-Tremolo, Zither-Tremolo, schüttelnde Glocke)
+    inline const juce::StringArray rollRates { "Aus", "1/8", "1/16", "1/16T", "1/32" };
+    inline double rollBeats (int i) { const double v[] = { 0.0, 0.5, 0.25, 1.0 / 6.0, 0.125 }; return v[juce::jlimit (0, 4, i)]; }
 }
 
 struct AlmParams
@@ -119,5 +122,15 @@ private:
 
     using AF = std::atomic<float>*;
     AF instrument{}, hell{}, abklingen{}, koerper{}, schwebung{}, anschlag{}, vokal{}, jodelsprung{},
-       echo{}, echoZeit{}, hall{}, volume{};
+       echo{}, echoZeit{}, hall{}, volume{}, wirbel{}, wirbelFrei{};
+    // Wirbel
+    void rollMidi (const juce::MidiBuffer& midi, int n);   // Ergebnis in rollBuf
+    struct Held { int note; float vel; };
+    std::vector<Held> held;
+    int rollNext = 0, rollHand = 0;
+    double untilRoll = 0.0;
+    juce::MidiBuffer rollBuf;
+    juce::Random rollRng;
+public:
+    std::atomic<int> rollStrikes { 0 };
 };

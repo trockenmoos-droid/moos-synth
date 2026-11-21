@@ -220,6 +220,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "echoZeit", 1 },   "Echozeit (ms)", tmk::skewed (80.0f, 1500.0f, 400.0f), 520.0f));
     p.push_back (std::make_unique<P>  (ID { "hall", 1 },       "Hall", 0.0f, 1.0f, 0.2f));
     p.push_back (std::make_unique<P>  (ID { "volume", 1 },     u8 ("Lautst\xc3\xa4rke (dB)"), -48.0f, 6.0f, -6.0f));
+    // Wirbel (neu in 0.2): Tremolo mit zwei Schlägeln, im Takt; "Lockerheit" macht es menschlich
+    p.push_back (std::make_unique<PC> (ID { "wirbel", 1 },     "Wirbel", rollRates, 0));
+    p.push_back (std::make_unique<P>  (ID { "wirbelFrei", 1 }, "Lockerheit", 0.0f, 1.0f, 0.3f));
     return { p.begin(), p.end() };
 }
 
@@ -235,6 +238,10 @@ static std::vector<tmk::Preset> factoryPresets()
         { "Jodler",               { { "instrument", 3 }, { "echo", 0.4f }, { "echoZeit", 650.0f } } },
         { "Juchzer",              { { "instrument", 3 }, { "jodelsprung", 1.0f }, { "vokal", 0.75f }, { "hell", 0.8f }, { "anschlag", 0.8f },
                                     { "echo", 0.5f }, { "echoZeit", 800.0f } } },
+        { "Hackbrett-Wirbel",     { { "instrument", 1 }, { "wirbel", 2 }, { "wirbelFrei", 0.35f }, { "hell", 0.65f }, { "abklingen", 2.5f },
+                                    { "schwebung", 0.4f }, { "hall", 0.3f } } },
+        { "Zither-Tremolo",       { { "instrument", 0 }, { "wirbel", 3 }, { "wirbelFrei", 0.25f }, { "hell", 0.7f }, { "anschlag", 0.35f },
+                                    { "abklingen", 3.5f }, { "echo", 0.2f } } },
         { "Sanfter Almsang",      { { "instrument", 3 }, { "jodelsprung", 0.15f }, { "vokal", 0.3f }, { "hell", 0.35f }, { "abklingen", 6.0f },
                                     { "hall", 0.45f }, { "schwebung", 0.5f } } },
     };
@@ -248,6 +255,8 @@ AlmProcessor::AlmProcessor()
     instrument = get ("instrument"); hell = get ("hell"); abklingen = get ("abklingen"); koerper = get ("koerper");
     schwebung = get ("schwebung"); anschlag = get ("anschlag"); vokal = get ("vokal"); jodelsprung = get ("jodelsprung");
     echo = get ("echo"); echoZeit = get ("echoZeit"); hall = get ("hall"); volume = get ("volume");
+    wirbel = get ("wirbel"); wirbelFrei = get ("wirbelFrei");
+    held.reserve (128);
 }
 
 bool AlmProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -270,6 +279,46 @@ void AlmProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     gainSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
     echoTimeSm.reset (sampleRate, 0.3);
     echoTimeSm.setCurrentAndTargetValue (echoZeit->load() * 0.001f * (float) sampleRate);
+    held.clear(); rollNext = rollHand = 0; untilRoll = 0.0;
+    rollBuf.ensureSize (4096);
+}
+
+// Wirbel: die gehaltenen Töne werden reihum neu angeschlagen, abwechselnd mit linkem und rechtem Schlägel
+void AlmProcessor::rollMidi (const juce::MidiBuffer& midi, int n)
+{
+    const double beats = alm::rollBeats ((int) wirbel->load());
+    const bool on = beats > 0.0 && ap.instrument != alm::jodler;
+    rollBuf.clear();
+    const double step = beats * 60.0 / readBpm() * ap.sr;
+    const float loose = wirbelFrei->load();
+    auto it = midi.cbegin();
+    for (int i = 0; i < n; ++i)
+    {
+        for (; it != midi.cend() && (*it).samplePosition <= i; ++it)
+        {
+            const auto m = (*it).getMessage();
+            if (m.isNoteOn())
+            {
+                held.erase (std::remove_if (held.begin(), held.end(), [&] (const Held& h) { return h.note == m.getNoteNumber(); }), held.end());
+                held.push_back ({ m.getNoteNumber(), m.getFloatVelocity() });
+                if (held.size() == 1) { untilRoll = step * 0.5; rollHand = 1; }   // der erste Schlag ist die gespielte Note selbst
+            }
+            else if (m.isNoteOff())
+                held.erase (std::remove_if (held.begin(), held.end(), [&] (const Held& h) { return h.note == m.getNoteNumber(); }), held.end());
+            else if (m.isAllNotesOff() || m.isAllSoundOff()) held.clear();
+            rollBuf.addEvent (m, i);
+        }
+        if (! on || held.empty()) continue;
+        untilRoll -= 1.0;
+        if (untilRoll > 0.0) continue;
+        rollNext %= (int) held.size();
+        const auto& h = held[(size_t) rollNext++];
+        // rechter Schlägel etwas kräftiger; Lockerheit = Schwankung in Stärke und Zeit
+        const float v = h.vel * ((rollHand++ % 2 == 0) ? 0.95f : 0.78f) * (1.0f - 0.35f * loose * rollRng.nextFloat());
+        rollBuf.addEvent (juce::MidiMessage::noteOn (1, h.note, juce::jlimit (0.05f, 1.0f, v)), i);
+        ++rollStrikes;
+        untilRoll += step * juce::jmax (0.3, 1.0 + 0.45 * loose * (rollRng.nextDouble() - 0.5));
+    }
 }
 
 void AlmProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -287,7 +336,8 @@ void AlmProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& 
 
     auto* L = buffer.getWritePointer (0);
     auto* R = buffer.getWritePointer (1);
-    voices.process (L, R, n, midi);
+    rollMidi (midi, n);
+    voices.process (L, R, n, rollBuf);
 
     // Echo vom Berg: zwei Wände, links und rechts leicht versetzt, jedes Echo dunkler
     const float e = echo->load();

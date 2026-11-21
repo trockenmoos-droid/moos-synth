@@ -43,6 +43,19 @@ public:
             g.drawEllipse (juce::Rectangle<float> (w * (0.6f + 0.25f * k), (bot - top) * (0.4f + 0.2f * k)).withCentre ({ cx, bot - 4.0f }), 1.5f);
         }
 
+        // Geläut: kleine Glocken der Reihe nach, die gerade angeschlagene leuchtet
+        if (const int nb = proc.ringCount.load(); nb > 0)
+        {
+            const int cur = proc.ringBell.load();
+            const float d = juce::jmin (14.0f, (bellArea.getWidth() + 20.0f) / (float) nb - 4.0f);
+            float x = cx - (nb * (d + 4.0f) - 4.0f) * 0.5f;
+            for (int k = 0; k < nb; ++k, x += d + 4.0f)
+            {
+                g.setColour (k == cur ? theme.accent : juce::Colour (0xffc9a14a).withAlpha (0.35f));
+                g.fillEllipse (x, bot + 8.0f, d, d * 0.9f);
+            }
+        }
+
         // Orgelprospekt
         auto organArea = r.reduced (16.0f, 26.0f);
         const float ol = juce::jlimit (0.0f, 1.0f, proc.organLevel.load() * 5.0f);

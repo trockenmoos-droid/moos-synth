@@ -38,6 +38,7 @@ AlmEditor::AlmEditor (AlmProcessor& p)
     addSection ("JODLER", { knob ("vokal", "Vokal"), knob ("jodelsprung", "Jodelsprung") });
     addSection ("BERG", { knob ("echo", "Echo"), knob ("echoZeit", "Echozeit"), knob ("hall", "Hall") });
     addSection ("AUSGANG", { knob ("volume", u8 ("Lautst\xc3\xa4rke")) });
+    addSection ("WIRBEL", { combo ("wirbel", "Wirbel", 1.3f), knob ("wirbelFrei", "Lockerheit") });
     finishSetup();
 }
 
@@ -48,8 +49,8 @@ void AlmEditor::layoutBody (juce::Rectangle<int> body)
     auto r2 = split (body.removeFromTop (rowH), { 5, 2 });
     layoutSection ("KLANG", r2[0]);
     layoutSection ("JODLER", r2[1]);
-    // unten rechts bleibt ein Fenster auf die Alm
-    auto r3 = split (body, { 3, 1, 3 });
+        auto r3 = split (body, { 3, 1, 3 });
     layoutSection ("BERG", r3[0]);
     layoutSection ("AUSGANG", r3[1]);
+    layoutSection ("WIRBEL", r3[2]);
 }

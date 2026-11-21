@@ -40,6 +40,7 @@ WolfgangEditor::WolfgangEditor (WolfgangProcessor& p)
     addSection (u8 ("ORGEL-H\xc3\x9cLLE"), { knob ("oAttack", "Attack"), knob ("oRelease", "Release") });
     addSection ("KIRCHE", { knob ("hall", "Hall"), knob ("hallZeit", "Hallzeit") });
     addSection ("AUSGANG", { knob ("volume", u8 ("Lautst\xc3\xa4rke")) });
+    addSection (u8 ("GEL\xc3\x84UT"), { combo ("gelaeut", u8 ("Gel\xc3\xa4ut"), 1.3f), combo ("schlag", "Schlagfolge", 1.0f) });
     finishSetup();
 }
 
@@ -52,8 +53,9 @@ void WolfgangEditor::layoutBody (juce::Rectangle<int> body)
     auto r2 = split (body.removeFromTop (rowH), { 14, 9 });
     layoutSection ("REGISTER", r2[0]);
     layoutSection ("ORGEL", r2[1]);
-    auto r3 = split (body, { 2, 2, 1 });
-    layoutSection (u8 ("ORGEL-H\xc3\x9cLLE"), r3[0]);
-    layoutSection ("KIRCHE", r3[1]);
-    layoutSection ("AUSGANG", r3[2]);
+    auto r3 = split (body, { 3, 2, 2, 1 });
+    layoutSection (u8 ("GEL\xc3\x84UT"), r3[0]);
+    layoutSection (u8 ("ORGEL-H\xc3\x9cLLE"), r3[1]);
+    layoutSection ("KIRCHE", r3[2]);
+    layoutSection ("AUSGANG", r3[3]);
 }

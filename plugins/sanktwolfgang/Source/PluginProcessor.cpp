@@ -172,6 +172,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P> (ID { "hall", 1 },      "Kirchenhall", 0.0f, 1.0f, 0.45f));
     p.push_back (std::make_unique<P> (ID { "hallZeit", 1 },  "Hallzeit (s)", tmk::skewed (1.0f, 12.0f, 4.0f), 5.0f));
     p.push_back (std::make_unique<P> (ID { "volume", 1 },    u8 ("Lautst\xc3\xa4rke (dB)"), -48.0f, 6.0f, -6.0f));
+    // Geläut (neu in 0.2)
+    p.push_back (std::make_unique<juce::AudioParameterChoice> (ID { "gelaeut", 1 }, u8 ("Gel\xc3\xa4ut"), ringModes, 0));
+    p.push_back (std::make_unique<juce::AudioParameterChoice> (ID { "schlag", 1 },  "Schlagfolge", ringRates, 1));
     return { p.begin(), p.end() };
 }
 
@@ -188,6 +191,10 @@ static std::vector<tmk::Preset> factoryPresets()
         { "Fl\xc3\xb6te mit Tremulant", { { "glocke", 0.0f }, { "orgel", 0.8f }, { "r8", 0.7f }, { "r4", 0.4f }, { "r2", 0.0f },
                                    { "chiff", 0.6f }, { "tremulant", 0.6f }, { "oAttack", 0.08f } } },
         { "Glocke und Orgel",    { { "orgel", 0.6f }, { "r8", 0.7f }, { "r4", 0.4f }, { "r2", 0.2f }, { "glocke", 0.6f }, { "hall", 0.55f } } },
+        { "Sonntagsgel\xc3\xa4ut",   { { "gelaeut", 2 }, { "schlag", 1 }, { "groesse", 9.0f }, { "anschlag", 0.6f }, { "schwebung", 0.5f },
+                                   { "hall", 0.6f }, { "hallZeit", 6.0f } } },
+        { "Glockenspiel im Turm", { { "gelaeut", 3 }, { "schlag", 3 }, { "groesse", 3.0f }, { "anschlag", 0.85f }, { "material", 0.4f },
+                                   { "daempfung", 0.3f }, { "hall", 0.5f } } },
         { "Pilgerweg",           { { "glocke", 0.5f }, { "groesse", 14.0f }, { "orgel", 0.45f }, { "r16", 0.5f }, { "r8", 0.6f }, { "r4", 0.0f },
                                    { "r2", 0.0f }, { "oAttack", 1.2f }, { "oRelease", 2.5f }, { "hall", 0.75f }, { "hallZeit", 9.0f }, { "tremulant", 0.25f } } },
     };
@@ -204,6 +211,8 @@ WolfgangProcessor::WolfgangProcessor()
     for (int r = 0; r < numRanks; ++r) ranks[r] = get (rankIds[r]);
     orgel = get ("orgel"); chiff = get ("chiff"); wind = get ("wind"); tremulant = get ("tremulant");
     oAttack = get ("oAttack"); oRelease = get ("oRelease"); hall = get ("hall"); hallZeit = get ("hallZeit"); volume = get ("volume");
+    gelaeut = get ("gelaeut"); schlag = get ("schlag");
+    bells.reserve (128); pendingOff.reserve (64);
 }
 
 bool WolfgangProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -222,6 +231,74 @@ void WolfgangProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     gainSm.reset (sampleRate, 0.05);
     gainSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
+    bells.clear(); pendingOff.clear(); rowPos = rowCount = 0; untilStrike = 0.0; gap = false;
+    ringBuf.ensureSize (4096);
+}
+
+// Geläut: gehaltene Tasten werden nicht direkt gespielt, sondern der Reihe nach angeschlagen
+// (wie das Wechselläuten im Turm: Runden, Plain Hunt mit Handschlag-Pause oder zufällig).
+void WolfgangProcessor::ringMidi (const juce::MidiBuffer& in, juce::MidiBuffer& out, int n)
+{
+    const int mode = (int) gelaeut->load();
+    const double step = ringBeats ((int) schlag->load()) * 60.0 / readBpm() * wp.sr;
+    auto resetRow = [this]
+    {
+        for (int k = 0; k < wolfgang::maxBells; ++k) row[k] = k;
+        rowPos = 0; rowCount = 0; gap = false;
+    };
+    auto it = in.cbegin();
+    for (int i = 0; i < n; ++i)
+    {
+        for (; it != in.cend() && (*it).samplePosition <= i; ++it)
+        {
+            const auto m = (*it).getMessage();
+            if (m.isNoteOn())
+            {
+                const bool first = bells.empty();
+                if (std::find (bells.begin(), bells.end(), m.getNoteNumber()) == bells.end() && (int) bells.size() < wolfgang::maxBells)
+                {
+                    bells.push_back (m.getNoteNumber());
+                    std::sort (bells.begin(), bells.end(), std::greater<int>());
+                    resetRow();
+                }
+                if (first) untilStrike = 0.0;
+            }
+            else if (m.isNoteOff())
+            {
+                bells.erase (std::remove (bells.begin(), bells.end(), m.getNoteNumber()), bells.end());
+                resetRow();
+            }
+            else if (m.isAllNotesOff() || m.isAllSoundOff()) { bells.clear(); out.addEvent (m, i); }
+            else out.addEvent (m, i);
+        }
+        for (auto& p : pendingOff)
+            if (--p.left == 0) out.addEvent (juce::MidiMessage::noteOff (1, p.note), i);
+        pendingOff.erase (std::remove_if (pendingOff.begin(), pendingOff.end(), [] (const Pending& p) { return p.left <= 0; }), pendingOff.end());
+
+        if (bells.empty()) { ringBell = -1; continue; }
+        untilStrike -= 1.0;
+        if (untilStrike > 0.0) continue;
+        const int nb = (int) bells.size();
+        if (gap) { gap = false; untilStrike += step; continue; }        // Handschlag-Pause
+        const int b = row[juce::jlimit (0, nb - 1, rowPos)];
+        // Handschlag etwas kräftiger als Rückschlag, dazu ein wenig menschliche Ungenauigkeit
+        const float vel = juce::jlimit (0.1f, 1.0f, ((rowCount % 2 == 0) ? 0.85f : 0.72f) + 0.1f * (ringRng.nextFloat() - 0.5f));
+        out.addEvent (juce::MidiMessage::noteOn (1, bells[(size_t) b], vel), i);
+        pendingOff.push_back ({ bells[(size_t) b], juce::jmax (1, (int) (step * 0.9)) });
+        ringBell = b; ringCount = nb; ++ringStrikes;
+        untilStrike += step * (1.0 + 0.04 * (ringRng.nextDouble() - 0.5));
+        if (++rowPos >= nb)
+        {
+            rowPos = 0;
+            ++rowCount;
+            if (mode == 2 && nb > 1)                  // Plain Hunt: abwechselnd Paare (1-2, 3-4 …) und (2-3, 4-5 …) tauschen
+                for (int k = (rowCount % 2 == 1) ? 0 : 1; k + 1 < nb; k += 2) std::swap (row[k], row[k + 1]);
+            else if (mode == 3)                        // Zufall: jede Reihe neu gemischt
+                for (int k = nb - 1; k > 0; --k) std::swap (row[k], row[ringRng.nextInt (k + 1)]);
+            if (rowCount % 2 == 0) gap = true;         // nach jedem Rückschlag eine Pause, wie im Turm
+        }
+    }
+    if (bells.empty()) ringCount = 0;
 }
 
 void WolfgangProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -245,7 +322,21 @@ void WolfgangProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 
     auto* L = buffer.getWritePointer (0);
     auto* R = buffer.getWritePointer (1);
-    voices.process (L, R, n, midi);
+    if ((int) gelaeut->load() > 0)
+    {
+        ringBuf.clear();
+        ringMidi (midi, ringBuf, n);
+        voices.process (L, R, n, ringBuf);
+    }
+    else
+    {
+        if (! bells.empty() || ! pendingOff.empty())          // Geläut gerade ausgeschaltet: angeschlagene Töne loslassen
+        {
+            for (auto& p : pendingOff) midi.addEvent (juce::MidiMessage::noteOff (1, p.note), 0);
+            pendingOff.clear(); bells.clear(); ringBell = -1; ringCount = 0;
+        }
+        voices.process (L, R, n, midi);
+    }
 
     float bl = 0.0f, ol = 0.0f;
     for (auto& v : voices.voices) if (v.active) { bl = juce::jmax (bl, v.bellLevelNow); ol = juce::jmax (ol, v.organLevelNow); }
