@@ -129,6 +129,25 @@ int main (int argc, char** argv)
         tt::check (b > a * 2.0f && b > 0.01f, juce::String::formatted ("Anschlag: RMS ohne=%.4f  mit=%.4f", a, b));
     }
 
+    // Gezeiten: Kristall pendelt im Takt (ohne Transport: freie Uhr, 120 BPM) – nach einem halben Lauf auf der Gegenseite
+    {
+        proc.setCurrentProgram (0);
+        auto set = [&] (const char* id, float v) { auto* a = proc.apvts.getParameter (id); a->setValueNotifyingHost (a->convertTo0to1 (v)); };
+        set ("kristall", 0.1f); set ("gezeiten", 1.0f); set ("gezeitenLauf", 0.0f);    // 1 Takt = 2 s
+        proc.setPlayConfigDetails (2, 2, sr, 512);
+        proc.prepareToPlay (sr, 512);
+        juce::AudioBuffer<float> b (2, 512); float lo = 1.0f, hi = 0.0f; bool fin = true;
+        for (int k = 0; k < (int) (4.0 * sr / 512); ++k)
+        {
+            b.clear(); for (int i = 0; i < 512; ++i) { const float v = 0.2f * std::sin ((k * 512 + i) * 0.05f); b.setSample (0, i, v); b.setSample (1, i, v); }
+            juce::MidiBuffer m; proc.processBlock (b, m);
+            fin = fin && tt::finite (b);
+            lo = juce::jmin (lo, proc.crystalNow.load()); hi = juce::jmax (hi, proc.crystalNow.load());
+        }
+        tt::check (fin && lo < 0.15f && hi > 0.9f, juce::String::formatted ("Gezeiten: Kristall pendelt %.2f .. %.2f", lo, hi));
+        set ("gezeiten", 0.0f);
+    }
+
     // Hörprobe: Plucks durch fünf Presets
     {
         auto pl = tt::plucks (sr, 7.0, 4.0);

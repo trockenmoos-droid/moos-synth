@@ -27,6 +27,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "rekristall", 1 },  "Rekristallisation", 0.0f, 0.95f, 0.2f));
     p.push_back (std::make_unique<P>  (ID { "anschlag", 1 },    "Anschlag", 0.0f, 1.0f, 0.3f));
     p.push_back (std::make_unique<PB> (ID { "kruste", 1 },      "Salzkruste (Freeze)", false));
+    // Gezeiten (neu in 0.2): im Takt löst sich das Salz und kristallisiert wieder – Kristall pendelt zur Gegenseite
+    p.push_back (std::make_unique<P>  (ID { "gezeiten", 1 },    "Gezeiten", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<PC> (ID { "gezeitenLauf", 1 }, "Gezeiten-Lauf", juce::StringArray { "1 Takt", "2 Takte", "4 Takte", "8 Takte" }, 1));
     // Ausgang
     p.push_back (std::make_unique<P>  (ID { "breite", 1 },      "Breite", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<P>  (ID { "mix", 1 },         "Mix", 0.0f, 1.0f, 0.5f));
@@ -52,6 +55,8 @@ static std::vector<tmk::Preset> factoryPresets()
                                     { "lage", 0 }, { "klang", 0.0f }, { "rekristall", 0.4f }, { "anschlag", 0.0f }, { "mix", 0.45f } } },
         { "Fleur de Sel",         { { "gitter", 4 }, { "kristall", 0.7f }, { "lage", 24 }, { "korn", 25.0f }, { "dichte", 6.0f },
                                     { "klang", 0.65f }, { "verdunstung", 0.25f }, { "breite", 1.0f }, { "mix", 0.4f } } },
+        { "Ebbe und Flut",        { { "gezeiten", 1.0f }, { "gezeitenLauf", 1 }, { "kristall", 0.05f }, { "gitter", 2 }, { "korn", 120.0f },
+                                    { "dichte", 22.0f }, { "streuung", 0.5f }, { "klang", 0.5f }, { "rekristall", 0.3f }, { "mix", 0.55f } } },
         { "Salzsturm",            { { "kristall", 0.2f }, { "anschlag", 1.0f }, { "dichte", 45.0f }, { "korn", 30.0f }, { "streuung", 1.0f },
                                     { "rueckwaerts", 0.5f }, { "gitter", 6 }, { "lage", 24 }, { "verdunstung", -0.5f }, { "rekristall", 0.3f } } },
     };
@@ -67,6 +72,7 @@ SalzProcessor::SalzProcessor()
     korn = get ("korn"); dichte = get ("dichte"); tiefe = get ("tiefe"); streuung = get ("streuung"); rueckwaerts = get ("rueckwaerts");
     kristall = get ("kristall"); gitter = get ("gitter"); grundton = get ("grundton"); lage = get ("lage"); klang = get ("klang");
     verdunstung = get ("verdunstung"); rekristall = get ("rekristall"); anschlag = get ("anschlag"); kruste = get ("kruste");
+    gezeiten = get ("gezeiten"); gezeitenLauf = get ("gezeitenLauf");
     breite = get ("breite"); mix = get ("mix"); ausgang = get ("ausgang");
     combs.assign ((size_t) (maxGrains * combLen), 0.0f);
 }
@@ -110,7 +116,7 @@ void SalzProcessor::spawn (bool burst)
     if (slot < 0) return;
     auto& g = grains[slot];
 
-    const float k = kristall->load();
+    const float k = kEff;
     const double beatSamples = 60.0 / juce::jmax (20.0, readBpm()) * sr;
     const bool frozen = kruste->load() > 0.5f;
 
@@ -198,7 +204,14 @@ void SalzProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     const double bps = bpm / 60.0 / sr;
     if (ppq < 0.0) ppq = (double) sampleClock * bps;
 
-    const float k = kristall->load(), dens = dichte->load(), att = anschlag->load(), fb = rekristall->load();
+    // Gezeiten: Kristall pendelt im Takt zur Gegenseite und zurück (auf der Eins steht der eingestellte Wert)
+    {
+        const float k0 = kristall->load(), tide = gezeiten->load();
+        double ph = ppq / (4.0 * std::pow (2.0, (double) juce::jlimit (0, 3, (int) gezeitenLauf->load()))); ph -= std::floor (ph);
+        const float swing = (float) (0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * ph));
+        kEff = juce::jlimit (0.0f, 1.0f, k0 + tide * swing * ((k0 < 0.5f ? 1.0f : 0.0f) - k0));
+    }
+    const float k = kEff, dens = dichte->load(), att = anschlag->load(), fb = rekristall->load();
     const bool frozen = kruste->load() > 0.5f;
     // Raster: die Zweierteilung des Schlags, die der Dichte am nächsten kommt
     const double perBeat = dens * 60.0 / bpm;

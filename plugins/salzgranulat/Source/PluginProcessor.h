@@ -95,6 +95,7 @@ private:
     using AF = std::atomic<float>*;
     AF korn{}, dichte{}, tiefe{}, streuung{}, rueckwaerts{};
     AF kristall{}, gitter{}, grundton{}, lage{}, klang{};
-    AF verdunstung{}, rekristall{}, anschlag{}, kruste{};
+    AF verdunstung{}, rekristall{}, anschlag{}, kruste{}, gezeiten{}, gezeitenLauf{};
+    float kEff = 0.5f;          // Kristall nach den Gezeiten (für diesen Block)
     AF breite{}, mix{}, ausgang{};
 };

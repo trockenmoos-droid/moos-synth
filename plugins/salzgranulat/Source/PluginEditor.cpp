@@ -37,6 +37,7 @@ SalzEditor::SalzEditor (SalzProcessor& p)
     addSection ("VERWANDLUNG", { knob ("verdunstung", "Verdunstung"), knob ("rekristall", "Rekristall."), knob ("anschlag", "Anschlag"),
                                  toggle ("kruste", "Salzkruste", 1.1f) });
     addSection ("AUSGANG", { knob ("breite", "Breite"), knob ("mix", "Mix"), knob ("ausgang", "Ausgang") });
+    addSection ("GEZEITEN", { knob ("gezeiten", "Gezeiten"), combo ("gezeitenLauf", "Lauf", 1.1f) });
     finishSetup();
 }
 
@@ -46,7 +47,8 @@ void SalzEditor::layoutBody (juce::Rectangle<int> body)
     const int h = body.getHeight() / 3;
     layoutSection (juce::String::fromUTF8 ("K\xc3\x96RNER"), body.removeFromTop (h));
     layoutSection ("KRISTALL", body.removeFromTop (h));
-    auto last = split (body, { 4, 3 });
+    auto last = split (body, { 4, 2, 3 });
     layoutSection ("VERWANDLUNG", last[0]);
-    layoutSection ("AUSGANG", last[1]);
+    layoutSection ("GEZEITEN", last[1]);
+    layoutSection ("AUSGANG", last[2]);
 }
