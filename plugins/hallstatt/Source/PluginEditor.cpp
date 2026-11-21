@@ -36,6 +36,7 @@ HallstattEditor::HallstattEditor (HallstattProcessor& p)
     addSection ("KLANG", { knob ("damping", u8 ("D\xc3\xa4mpfung")), knob ("bass", "Bass"),
                            knob ("mod", "Modulation"), knob ("width", "Breite") });
     addSection ("FILTER", { knob ("lowcut", "Low Cut"), knob ("highcut", "High Cut") });
+    addSection ("SPIEGELUNG", { knob ("spiegel", "Spiegelung"), knob ("spiegelzeit", "Zeit") });
     addSection ("MIX", { knob ("duck", "Ducking"), knob ("mix", "Mix") });
     finishSetup();
 }
@@ -53,7 +54,8 @@ void HallstattEditor::layoutBody (juce::Rectangle<int> body)
     layoutSection ("RAUMFORM", r2[0]);
     layoutSection ("KLANG", r2[1]);
 
-    auto r3 = split (body, { 1, 1 });
+    auto r3 = split (body, { 1, 1, 1 });
     layoutSection ("FILTER", r3[0]);
-    layoutSection ("MIX", r3[1]);
+    layoutSection ("SPIEGELUNG", r3[1]);
+    layoutSection ("MIX", r3[2]);
 }

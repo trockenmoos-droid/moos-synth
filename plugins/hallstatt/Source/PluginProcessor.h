@@ -75,8 +75,12 @@ private:
     int lastRoom = -1;
     float lastColour = -999.0f;
     juce::AudioBuffer<float> wet, fdnIn, fdnOut;
-    juce::SmoothedValue<float> mixSm;
+    juce::SmoothedValue<float> mixSm, spiegelSm;
+    // Spiegelung: der Hall wird in Stücken rückwärts gelesen (wie das Spiegelbild im See)
+    std::vector<float> mirror[2];
+    int mirrorW = 0;
+    double mirrorPhase = 0.0;
 
     using AF = std::atomic<float>*;
-    AF room{}, size{}, decay{}, predelay{}, damping{}, bass{}, mod{}, early{}, width{}, lowcut{}, highcut{}, mix{}, freeze{}, duck{};
+    AF room{}, size{}, decay{}, predelay{}, damping{}, bass{}, mod{}, early{}, width{}, lowcut{}, highcut{}, mix{}, freeze{}, duck{}, spiegel{}, spiegelzeit{};
 };

@@ -63,6 +63,28 @@ int main (int argc, char** argv)
         proc.apvts.getParameter ("freeze")->setValueNotifyingHost (0.0f);
     }
 
+    // Spiegelung: Hall läuft rückwärts – die lauteste Stelle kommt später als ohne
+    {
+        juce::AudioBuffer<float> click (2, (int) (sr * 4)); click.clear();
+        for (int i = 0; i < 480; ++i) { click.setSample (0, i, (rng.nextFloat() - 0.5f) * 0.8f); click.setSample (1, i, (rng.nextFloat() - 0.5f) * 0.8f); }
+        auto peakTime = [&] (float sp)
+        {
+            proc.setCurrentProgram (1);
+            proc.apvts.getParameter ("mix")->setValueNotifyingHost (1.0f);
+            proc.apvts.getParameter ("early")->setValueNotifyingHost (0.0f);
+            auto* s = proc.apvts.getParameter ("spiegel"); s->setValueNotifyingHost (sp);
+            auto* z = proc.apvts.getParameter ("spiegelzeit"); z->setValueNotifyingHost (z->convertTo0to1 (500.0f));
+            auto out = tt::run (proc, click, sr);
+            int best = 0; float bv = 0.0f;
+            for (int k = 0; k < out.getNumSamples() / 480; ++k) { const float v = out.getRMSLevel (0, k * 480, 480); if (v > bv) { bv = v; best = k; } }
+            return std::pair<float, float> { best * 0.01f, tt::peak (out, 0, out.getNumSamples()) };
+        };
+        auto [t0, p0] = peakTime (0.0f);
+        auto [t1, p1] = peakTime (1.0f);
+        tt::check (t1 > t0 + 0.15f && p1 > 0.02f && p1 < 2.0f,
+                   juce::String::formatted ("Spiegelung: lauteste Stelle %.2f s -> %.2f s, Spitze %.3f -> %.3f", t0, t1, p0, p1));
+    }
+
     // Hörprobe: Plucks trocken, dann durch 4 Räume
     {
         auto dry = tt::plucks (sr, 7.0, 3.2);

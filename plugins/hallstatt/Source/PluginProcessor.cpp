@@ -22,6 +22,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "duck", 1 },     "Ducking", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<P>  (ID { "mix", 1 },      "Mix", 0.0f, 1.0f, 0.3f));
     p.push_back (std::make_unique<PB> (ID { "freeze", 1 },   "Freeze", false));
+    // Spiegelung (neu in 0.2): Hall rückwärts, in Stücken – schwillt an, statt abzuklingen
+    p.push_back (std::make_unique<P>  (ID { "spiegel", 1 },  "Spiegelung", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<P>  (ID { "spiegelzeit", 1 }, "Spiegel-Zeit (ms)", tmk::skewed (80.0f, 1500.0f, 400.0f), 450.0f));
     return { p.begin(), p.end() };
 }
 
@@ -36,6 +39,10 @@ static std::vector<tmk::Preset> factoryPresets()
         { "Unendliche Kirche",      { { "room", 2 }, { "decay", 30.0f }, { "predelay", 60.0f }, { "mod", 0.55f }, { "damping", 0.6f }, { "size", 1.0f }, { "mix", 0.7f }, { "lowcut", 200.0f } } },
         { "Stollen-Snare",          { { "room", 0 }, { "decay", 1.6f }, { "size", 0.3f }, { "early", 0.8f }, { "duck", 0.5f }, { "mix", 0.3f }, { "lowcut", 180.0f } } },
         { "Drums gedrosselt",       { { "room", 2 }, { "decay", 2.2f }, { "size", 0.4f }, { "duck", 0.65f }, { "lowcut", 250.0f }, { "highcut", 8000.0f }, { "mix", 0.35f } } },
+        { "Spiegelbild am See",     { { "room", 3 }, { "decay", 6.0f }, { "predelay", 20.0f }, { "early", 0.4f }, { "damping", 0.55f }, { "size", 0.65f },
+                                      { "spiegel", 0.75f }, { "spiegelzeit", 600.0f }, { "mix", 0.45f } } },
+        { "Beinhaus r\xc3\xbc" "ckw\xc3\xa4rts", { { "room", 1 }, { "decay", 2.2f }, { "predelay", 5.0f }, { "early", 0.3f },
+                                      { "spiegel", 1.0f }, { "spiegelzeit", 220.0f }, { "mix", 0.35f } } },
         { "Shimmernde Eisfl\xc3\xa4" "che", { { "room", 4 }, { "decay", 22.0f }, { "mod", 0.8f }, { "damping", 0.05f }, { "width", 1.0f }, { "early", 0.2f }, { "mix", 0.6f } } },
     };
 }
@@ -49,7 +56,7 @@ HallstattProcessor::HallstattProcessor()
     room = get ("room"); size = get ("size"); decay = get ("decay"); predelay = get ("predelay");
     damping = get ("damping"); bass = get ("bass"); mod = get ("mod"); early = get ("early");
     width = get ("width"); lowcut = get ("lowcut"); highcut = get ("highcut"); mix = get ("mix");
-    freeze = get ("freeze"); duck = get ("duck");
+    freeze = get ("freeze"); duck = get ("duck"); spiegel = get ("spiegel"); spiegelzeit = get ("spiegelzeit");
 }
 
 bool HallstattProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -76,6 +83,10 @@ void HallstattProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     fdnOut.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     mixSm.reset (sr, 0.05);
     mixSm.setCurrentAndTargetValue (mix->load());
+    spiegelSm.reset (sr, 0.05);
+    spiegelSm.setCurrentAndTargetValue (spiegel->load());
+    for (auto& m : mirror) m.assign ((size_t) (sr * 3.2) + 8, 0.0f);
+    mirrorW = 0; mirrorPhase = 0.0;
 }
 
 void HallstattProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -176,6 +187,17 @@ void HallstattProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBu
     auto* outL = buffer.getWritePointer (0);
     auto* outR = buffer.getWritePointer (1);
     mixSm.setTargetValue (mix->load());
+    spiegelSm.setTargetValue (spiegel->load());
+    const int mSize = (int) mirror[0].size();
+    const double chunk = juce::jlimit (64.0, (mSize - 8) / 2.0, spiegelzeit->load() * 0.001 * sr);
+    auto readMirror = [&] (int ch, double d)
+    {
+        double rp = mirrorW - d;
+        while (rp < 0.0) rp += mSize;
+        const int i0 = juce::jlimit (0, mSize - 1, (int) rp), i1 = (i0 + 1) % mSize;
+        const float fr = (float) (rp - i0);
+        return mirror[ch][(size_t) i0] + fr * (mirror[ch][(size_t) i1] - mirror[ch][(size_t) i0]);
+    };
     for (int i = 0; i < n; ++i)
     {
         float w[2] = { wl[i] + tl[i], wr[i] + tr[i] };
@@ -188,6 +210,26 @@ void HallstattProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBu
             lpS[ch]    = v + aLp * (lpS[ch] - v);              v = lpS[ch];
             w[ch] = v;
         }
+
+        // Spiegelung: zwei Leseköpfe laufen rückwärts durch den Hall (je ein Stück, um ein halbes versetzt)
+        const float sp = spiegelSm.getNextValue();
+        mirror[0][(size_t) mirrorW] = w[0];
+        mirror[1][(size_t) mirrorW] = w[1];
+        if (sp > 0.0001f)
+        {
+            float rv[2] = { 0.0f, 0.0f };
+            for (int head = 0; head < 2; ++head)
+            {
+                double ph = mirrorPhase + head * 0.5; ph -= std::floor (ph);
+                const double d = 2.0 * ph * chunk + 1.0;               // rückwärts: Abstand wächst doppelt so schnell
+                const float win = std::sin (juce::MathConstants<float>::pi * (float) ph);
+                for (int ch = 0; ch < 2; ++ch) rv[ch] += readMirror (ch, d) * win * win;
+            }
+            for (int ch = 0; ch < 2; ++ch) w[ch] += sp * (rv[ch] * 1.15f - w[ch]);
+        }
+        if (++mirrorW >= mSize) mirrorW = 0;
+        mirrorPhase += 1.0 / chunk;
+        if (mirrorPhase >= 1.0) mirrorPhase -= 1.0;
 
         const float lvl = juce::jmax (std::abs (inL[i]), std::abs (inR[i]));
         duckEnv = lvl > duckEnv ? lvl + atk * (duckEnv - lvl) : lvl + rel * (duckEnv - lvl);
