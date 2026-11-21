@@ -72,6 +72,30 @@ int main (int argc, char** argv)
         proc.apvts.getParameter ("absperren")->setValueNotifyingHost (0.0f);
     }
 
+    // Gefälle: die zweite Wiederholung liegt eine Oktave tiefer
+    {
+        proc.setCurrentProgram (0);
+        auto set = [&] (const char* id, float v) { auto* a = proc.apvts.getParameter (id); a->setValueNotifyingHost (a->convertTo0to1 (v)); };
+        set ("sync", 0); set ("time", 300.0f); set ("feedback", 0.7f); set ("stations", 1); set ("rohr", 0); set ("salz", 0); set ("stroemung", 0);
+        set ("ton", 18000.0f); set ("lowcut", 20.0f); set ("breite", 0.0f); set ("mix", 1.0f);
+        juce::AudioBuffer<float> tone (2, (int) (sr * 1.5)); tone.clear();
+        for (int i = 0; i < (int) (sr * 0.12); ++i) { const float v = 0.4f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 440.0 * i / sr); tone.setSample (0, i, v); tone.setSample (1, i, v); }
+        auto freqAt = [&] (const juce::AudioBuffer<float>& b, double t0, double len)
+        {
+            int z = 0; const int s = (int) (t0 * sr), e = (int) ((t0 + len) * sr);
+            for (int i = s + 1; i < e; ++i) if ((b.getSample (0, i - 1) < 0.0f) != (b.getSample (0, i) < 0.0f)) ++z;
+            return z / (2.0 * len);
+        };
+        set ("gefaelle", 0.0f);
+        auto flat = tt::run (proc, tone, sr);
+        set ("gefaelle", -12.0f);
+        auto down = tt::run (proc, tone, sr);
+        const double f1 = freqAt (down, 0.32, 0.06), f2 = freqAt (down, 0.66, 0.06), f2flat = freqAt (flat, 0.62, 0.06);
+        tt::check (std::abs (f1 - 440.0) < 40.0 && std::abs (f2 - 220.0) < 40.0 && std::abs (f2flat - 440.0) < 40.0 && tt::finite (down),
+                   juce::String::formatted ("Gefaelle -12: 1. Wiederholung %.0f Hz, 2. Wiederholung %.0f Hz (ohne: %.0f Hz)", f1, f2, f2flat));
+        set ("gefaelle", 0.0f);
+    }
+
     // Hörprobe
     {
         auto dry = tt::plucks (sr, 7.0, 2.4);

@@ -22,6 +22,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "duck", 1 },      "Ducking", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<P>  (ID { "mix", 1 },       "Mix", 0.0f, 1.0f, 0.35f));
     p.push_back (std::make_unique<PB> (ID { "absperren", 1 }, "Absperren", false));
+    // Gefälle (neu in 0.2): jede Wiederholung um so viele Halbtöne verschoben
+    p.push_back (std::make_unique<PI> (ID { "gefaelle", 1 },  u8 ("Gef\xc3\xa4lle (HT)"), -12, 12, 0));
     return { p.begin(), p.end() };
 }
 
@@ -40,6 +42,10 @@ static std::vector<tmk::Preset> factoryPresets()
                                      { "division", 6 }, { "mix", 0.4f } } },
         { "Klarer Strom",          { { "rohr", 0.0f }, { "salz", 0.0f }, { "stroemung", 0.0f }, { "ton", 18000.0f }, { "lowcut", 20.0f },
                                      { "feedback", 0.4f }, { "breite", 0.5f } } },
+        { "Talw\xc3\xa4rts",              { { "gefaelle", -2 }, { "division", 5 }, { "feedback", 0.72f }, { "salz", 0.25f }, { "rohr", 0.3f },
+                                     { "breite", 0.8f }, { "ton", 5000.0f }, { "mix", 0.38f } } },
+        { "Solequelle aufw\xc3\xa4rts", { { "gefaelle", 7 }, { "division", 3 }, { "feedback", 0.6f }, { "stroemung", 0.25f }, { "ton", 9000.0f },
+                                     { "lowcut", 250.0f }, { "breite", 1.0f }, { "mix", 0.35f } } },
         { "Stollen-Echo Vocals",   { { "division", 2 }, { "feedback", 0.3f }, { "duck", 0.6f }, { "stations", 2 }, { "lowcut", 300.0f },
                                      { "ton", 5000.0f }, { "mix", 0.3f } } },
     };
@@ -54,7 +60,7 @@ SoleleitungProcessor::SoleleitungProcessor()
     sync = get ("sync"); division = get ("division"); timeMs = get ("time"); feedback = get ("feedback");
     stations = get ("stations"); rohr = get ("rohr"); rohrTon = get ("rohrTon"); salz = get ("salz");
     stroemung = get ("stroemung"); ton = get ("ton"); lowcut = get ("lowcut"); breite = get ("breite");
-    duck = get ("duck"); mix = get ("mix"); absperren = get ("absperren");
+    duck = get ("duck"); mix = get ("mix"); absperren = get ("absperren"); gefaelle = get ("gefaelle");
 }
 
 bool SoleleitungProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -77,6 +83,29 @@ void SoleleitungProcessor::prepareToPlay (double sampleRate, int)
     timeSm.setCurrentAndTargetValue ((float) juce::jlimit (8.0, sr * 4.0, ms * 0.001 * sr));
     mixSm.reset (sr, 0.05);
     mixSm.setCurrentAndTargetValue (mix->load());
+    for (auto& s : shiftBuf) std::fill (s, s + shiftSize, 0.0f);
+    shiftW = 0; shiftPhase = 0.0; shiftBlend = 0.0f;
+}
+
+// zwei Leseköpfe mit Sägezahn-Verzögerung und Hann-Fenstern (klassischer Delay-Pitchshifter)
+float SoleleitungProcessor::pitchShift (int ch, float ratio)
+{
+    const double win = 2400.0;
+    float out = 0.0f;
+    for (int h = 0; h < 2; ++h)
+    {
+        double ph = shiftPhase + h * 0.5; ph -= std::floor (ph);
+        const double d = 4.0 + ph * win;
+        double rp = shiftW - d;
+        while (rp < 0.0) rp += shiftSize;
+        const int i0 = juce::jlimit (0, shiftSize - 1, (int) rp), i1 = (i0 + 1) % shiftSize;
+        const float fr = (float) (rp - i0);
+        const float s = shiftBuf[ch][i0] + fr * (shiftBuf[ch][i1] - shiftBuf[ch][i0]);
+        const float wnd = std::sin (juce::MathConstants<float>::pi * (float) ph);
+        out += s * wnd * wnd;
+    }
+    juce::ignoreUnused (ratio);
+    return out;
 }
 
 float SoleleitungProcessor::read (int ch, float delay) const noexcept
@@ -113,6 +142,9 @@ void SoleleitungProcessor::process (juce::AudioBuffer<float>& buffer, juce::Midi
     // beim Absperren nur verlustfrei kreuzen (ganz oder gar nicht), damit nichts verloren geht
     const float wid   = frz ? (breite->load() > 0.5f ? 1.0f : 0.0f) : breite->load();
     const float duckAmt = duck->load();
+    const int   semis = frz ? 0 : juce::roundToInt (gefaelle->load());
+    const float ratio = std::pow (2.0f, (float) semis / 12.0f);
+    const double shiftInc = (1.0 - ratio) / 2400.0;          // Verzögerung wächst (tiefer) oder schrumpft (höher)
 
     // Rohr-Resonanz (Bandpass, TPT-SVF)
     const float g  = (float) std::tan (juce::MathConstants<double>::pi * juce::jmin ((double) rohrTon->load(), 0.45 * sr) / sr);
@@ -172,8 +204,19 @@ void SoleleitungProcessor::process (juce::AudioBuffer<float>& buffer, juce::Midi
 
         // Rückkopplung vom Ende der Leitung, mit Kreuzung für Ping-Pong
         const float endL = read (0, dL), endR = read (1, dR);
-        const float fL = loop (cs[0], endL * (1.0f - wid) + endR * wid) * fb;
-        const float fR = loop (cs[1], endR * (1.0f - wid) + endL * wid) * fb;
+        float fL = loop (cs[0], endL * (1.0f - wid) + endR * wid) * fb;
+        float fR = loop (cs[1], endR * (1.0f - wid) + endL * wid) * fb;
+
+        // Gefälle: die Rückkopplung läuft durch den Tonhöhen-Verschieber
+        shiftBuf[0][shiftW] = fL; shiftBuf[1][shiftW] = fR;
+        shiftBlend += ((semis != 0 ? 1.0f : 0.0f) - shiftBlend) * 0.002f;
+        if (shiftBlend > 0.0005f)
+        {
+            fL += shiftBlend * (pitchShift (0, ratio) - fL);
+            fR += shiftBlend * (pitchShift (1, ratio) - fR);
+        }
+        if (++shiftW >= shiftSize) shiftW = 0;
+        shiftPhase += shiftInc; shiftPhase -= std::floor (shiftPhase);
 
         const float inL = L[i], inR = R[i];
         const float mono = 0.5f * (inL + inR);

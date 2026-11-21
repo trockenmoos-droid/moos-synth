@@ -57,7 +57,15 @@ private:
 
     using AF = std::atomic<float>*;
     AF sync{}, division{}, timeMs{}, feedback{}, stations{}, rohr{}, rohrTon{}, salz{}, stroemung{},
-       ton{}, lowcut{}, breite{}, duck{}, mix{}, absperren{};
+       ton{}, lowcut{}, breite{}, duck{}, mix{}, absperren{}, gefaelle{};
 
     float read (int ch, float delay) const noexcept;
+
+    // Gefälle: Tonhöhenverschiebung in der Rückkopplung – jede Wiederholung rinnt eine Stufe tiefer/höher
+    static constexpr int shiftSize = 4096;
+    float shiftBuf[2][shiftSize] {};
+    int shiftW = 0;
+    double shiftPhase = 0.0;
+    float shiftBlend = 0.0f;
+    float pitchShift (int ch, float ratio);
 };

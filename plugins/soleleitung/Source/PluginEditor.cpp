@@ -32,7 +32,7 @@ SoleleitungEditor::SoleleitungEditor (SoleleitungProcessor& p)
     addSection ("LEITUNG", { custom (view, 1.0f) });
     addSection ("ZEIT", { toggle ("sync", "SYNC"), combo ("division", "Takt", 1.2f), knob ("time", "Zeit ms"),
                           knob ("feedback", "Feedback"), knob ("stations", "Stationen") });
-    addSection ("ROHR", { knob ("rohr", "Rohr"), knob ("rohrTon", "Rohrton") });
+    addSection ("ROHR", { knob ("rohr", "Rohr"), knob ("rohrTon", "Rohrton"), knob ("gefaelle", u8 ("Gef\xc3\xa4lle")) });
     addSection (u8 ("SALZ & STR\xc3\x96MUNG"), { knob ("salz", "Salz"), knob ("stroemung", u8 ("Str\xc3\xb6mung")) });
     addSection ("FILTER", { knob ("lowcut", "Low Cut"), knob ("ton", "Ton") });
     addSection ("AUSGANG", { knob ("breite", "Breite"), knob ("duck", "Ducking"), knob ("mix", "Mix"), toggle ("absperren", "ABSPERREN", 1.2f) });
@@ -43,7 +43,7 @@ void SoleleitungEditor::layoutBody (juce::Rectangle<int> body)
 {
     layoutSection ("LEITUNG", body.removeFromTop (body.getHeight() * 36 / 100));
     auto row2 = body.removeFromTop (body.getHeight() / 2);
-    auto r2 = split (row2, { 5, 2 });
+    auto r2 = split (row2, { 5, 3 });
     layoutSection ("ZEIT", r2[0]);
     layoutSection ("ROHR", r2[1]);
     auto r3 = split (body, { 2, 2, 4 });
