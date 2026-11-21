@@ -13,7 +13,7 @@ static void stopGenerators (juce::AudioProcessor& p)
     // sehr hohes Feedback bei langen Zeiten klingt zu Recht länger als 17 s – für den Stille-Test zurücknehmen
     for (auto* prm : p.getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
-            if (r->getParameterID() == "feedback" && r->getValue() > 0.3f) r->setValueNotifyingHost (0.3f);
+            if ((r->getParameterID() == "feedback" || r->getParameterID() == "delayFb") && r->getValue() > 0.3f) r->setValueNotifyingHost (0.3f);
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 

@@ -116,6 +116,40 @@ int main (int argc, char** argv)
         if (! ok || rms <= 0.002) ++failures;
     }
 
+    // Wachsen: eine lange gehaltene Note wird mit der Zeit heller
+    {
+        proc.setCurrentProgram (0);
+        auto set = [&] (const char* id, float v) { auto* a = proc.apvts.getParameter (id); a->setValueNotifyingHost (a->convertTo0to1 (v)); };
+        auto bright = [&] (float grow)
+        {
+            set ("wachsen", grow); set ("wachsZeit", 3.0f); set ("reverbMix", 0.0f); set ("chorusMix", 0.0f);
+            set ("mod1Amt", 0.0f); set ("mod2Amt", 0.0f); set ("lfoPos", 0.0f); set ("lfoCut", 0.0f); set ("envAmt", 0.0f); set ("drift", 0.0f);
+            const double sr = 48000.0; const int block = 512, total = (int) (sr * 8);
+            proc.setPlayConfigDetails (0, 2, sr, block); proc.prepareToPlay (sr, block);
+            juce::AudioBuffer<float> buf (2, block);
+            double d0 = 0, x0 = 0, d1 = 0, x1 = 0; float prev = 0.0f;
+            for (int pos = 0; pos < total; pos += block)
+            {
+                juce::MidiBuffer midi; buf.clear();
+                if (pos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 48, 0.9f), 0);
+                proc.processBlock (buf, midi);
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (0, i); const double dv = v - prev; prev = v;
+                    if (pos >= (int) (sr * 1.5) && pos < (int) (sr * 2.0)) { d0 += dv * dv; x0 += v * v; }
+                    if (pos >= (int) (sr * 7.0)) { d1 += dv * dv; x1 += v * v; }
+                }
+            }
+            return std::pair<double, double> { std::sqrt (d0 / juce::jmax (1e-12, x0)), std::sqrt (d1 / juce::jmax (1e-12, x1)) };
+        };
+        auto [a0, b0] = bright (0.0f);
+        auto [a1, b1] = bright (1.0f);
+        const bool grows = b1 > a1 * 1.3 && b0 < a0 * 1.15;
+        std::printf ("wachsen: helligkeit %.3f -> %.3f (ohne: %.3f -> %.3f) %s\n", a1, b1, a0, b0, grows ? "OK" : "FAIL");
+        if (! grows) ++failures;
+        set ("wachsen", 0.0f);
+    }
+
     // Wavetable-Dateien erzeugen und laden
     juce::File dir ("/tmp/moostest"); dir.createDirectory();
     auto writeWav = [&] (const juce::File& wf, const std::vector<float>& d)

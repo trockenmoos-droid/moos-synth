@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tm/TmEnvelope.h>
 #include <tm/TmProcessor.h>
 #include <tm/TmVoices.h>
 #include <tm/TmReverb.h>
@@ -82,7 +83,7 @@ private:
         int note = 60, chop = 0;
         float vel = 1.0f, pitch = 0.0f;
         double untilGrain = 0.0, scan = 0.0;
-        juce::ADSR env;
+        tmk::Adsr env;
         float envNow = 0.0f;
         int gateLeft = -1;          // Schritt-Modus: Samples bis zum Loslassen
         float wet = 0.0f;           // Trocknen: wie nass die Tusche dieser Note noch ist (0..1)

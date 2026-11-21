@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tm/TmEnvelope.h>
 #include <tm/TmProcessor.h>
 #include <tm/TmReverb.h>
 #include <tm/TmVoices.h>
@@ -43,7 +44,7 @@ public:
     void kill() { bellGain = 0.0f; organEnv.reset(); active = false; }
     void render (float* L, float* R, int n, const tmk::PlayContext& ctx);
 
-    juce::ADSR organEnv;
+    tmk::Adsr organEnv;
     float organLevelNow = 0.0f, bellLevelNow = 0.0f;
 
 private:

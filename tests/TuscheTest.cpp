@@ -209,6 +209,21 @@ int main (int argc, char** argv)
                    juce::String::formatted ("Ableton-Szenario %d: %.0f s spielen, 60 s Stopp: Spitze=%.3f, nach Stopp=%.5f", round, playFor, worst, worstAfterStop));
     }
 
+    // Hüllkurve: Sustain 0, Taste während des Attacks losgelassen, danach Regler bewegt -> muss trotzdem ausklingen
+    {
+        proc.setCurrentProgram (0);
+        setP (proc, "modus", 2.0f); setP (proc, "sustain", 0.0f); setP (proc, "attack", 400.0f); setP (proc, "release", 300.0f); setP (proc, "raumgr", 0.0f);
+        int blockNo = 0;
+        auto out = tt::run (proc, zeros (sr, 4.0), sr, [&] (int pos, juce::MidiBuffer& m)
+        {
+            if (pos == 0) m.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+            if (pos <= (int) (0.2 * sr) && pos + 512 > (int) (0.2 * sr)) m.addEvent (juce::MidiMessage::noteOff (1, 60), (int) (0.2 * sr) - pos);
+            setP (proc, "decay", 100.0f + 50.0f * (float) (blockNo++ % 7));      // Regler wird bewegt
+        });
+        const float late = tt::peak (out, (int) (3.0 * sr), (int) (0.9 * sr));
+        tt::check (late < 1.0e-3f, juce::String::formatted ("Huellkurve klingt aus (Sustain 0, Regler bewegt): nach 3 s %.5f", late));
+    }
+
     // Trocknen: nass beginnt dumpf und verschwimmend, später trocken und hell
     {
         auto measure = [&] (float wet)

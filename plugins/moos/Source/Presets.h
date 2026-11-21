@@ -96,6 +96,14 @@ namespace MoosPresets
                 { "lfoCut", 0.4f }, { "lfoRate", 0.18f },
                 { "arpOn", 1 }, { "arpMode", 2 }, { "arpRate", 2 }, { "arpOct", 2 }, { "arpGate", 0.5f },
                 { "delayMix", 0.3f }, { "delayDiv", 5 }, { "delayFb", 0.5f }, { "reverbMix", 0.4f } } },
+
+            { "Moospolster w\xc3\xa4" "chst", {
+                { "posA", 0.12f }, { "posB", 0.3f }, { "octB", -1 }, { "fineB", 6.0f }, { "levelB", 0.35f },
+                { "uniVoices", 5 }, { "uniDetune", 8.0f }, { "uniWidth", 0.9f },
+                { "cutoff", 650.0f }, { "reso", 0.3f }, { "envAmt", 0.1f },
+                { "aA", 2.5f }, { "aS", 0.9f }, { "aR", 5.0f },
+                { "wachsen", 0.9f }, { "wachsZeit", 14.0f },
+                { "chorusMix", 0.4f }, { "reverbMix", 0.5f }, { "shimmer", 0.15f } } },
         };
         return list;
     }

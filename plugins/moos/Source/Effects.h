@@ -150,6 +150,7 @@ public:
         fb.clear();
         for (auto& p : shifters) p.reset();
         lp[0] = lp[1] = hp[0] = hp[1] = 0.0f;
+        silentFor = 0; dryOut = 1.0f; sRate = sampleRate;
         juce::ignoreUnused (maxBlock);
     }
 
@@ -166,13 +167,18 @@ public:
         for (int off = 0; off < n; off += chunk)
         {
             const int m = juce::jmin (chunk, n - off);
+            float inPeak = 0.0f;
             for (int ch = 0; ch < 2; ++ch)
             {
                 const auto* src = buf.getReadPointer (juce::jmin (ch, buf.getNumChannels() - 1), start + off);
                 auto* w = wet.getWritePointer (ch);
                 const auto* f = fb.getReadPointer (ch);
-                for (int i = 0; i < m; ++i) w[i] = src[i] + f[i];
+                for (int i = 0; i < m; ++i) { w[i] = src[i] + f[i]; inPeak = juce::jmax (inPeak, std::abs (src[i])); }
             }
+            // Shimmer darf sich nicht endlos selbst tragen: nach 2 s ohne Eingang lässt die Rückführung langsam nach
+            silentFor = inPeak < 1.0e-4f ? silentFor + m : 0;
+            const float dryTarget = silentFor > (int) (2.0 * sRate) ? 0.3f : 1.0f;
+            dryOut += (dryTarget - dryOut) * juce::jmin (1.0f, (float) m / (float) (1.5 * sRate));
 
             juce::dsp::AudioBlock<float> blk (wet.getArrayOfWritePointers(), 2, (size_t) m);
             reverb.process (juce::dsp::ProcessContextReplacing<float> (blk));
@@ -186,7 +192,7 @@ public:
                     const float up = shifters[ch].process (w[i]);
                     lp[ch] += 0.25f * (up - lp[ch]);              // Höhen im Shimmer bändigen
                     hp[ch] += 0.02f * (lp[ch] - hp[ch]);                  // Tiefen aus der Schleife nehmen
-                    f[i] = std::tanh ((lp[ch] - hp[ch]) * shimmer * SHIMMER_FB);
+                    f[i] = std::tanh ((lp[ch] - hp[ch]) * shimmer * SHIMMER_FB * dryOut);
                 }
                 if (m < chunk) juce::FloatVectorOperations::clear (f + m, chunk - m);
             }
@@ -207,4 +213,7 @@ private:
     juce::AudioBuffer<float> wet, fb;
     OctaveShifter shifters[2];
     float lp[2] {}, hp[2] {};
+    int silentFor = 0;
+    float dryOut = 1.0f;
+    double sRate = 48000.0;
 };

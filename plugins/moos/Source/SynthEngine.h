@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tm/TmEnvelope.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Wavetable.h"
 #include "Params.h"
@@ -25,6 +26,7 @@ public:
         lfoRate = get ("lfoRate"); lfoShape = get ("lfoShape"); lfoPos = get ("lfoPos"); lfoCut = get ("lfoCut");
         lfo2Rate = get ("lfo2Rate"); lfo2Shape = get ("lfo2Shape");
         drift = get ("drift"); glide = get ("glide"); mono = get ("mono"); bendRange = get ("bendRange");
+        wachsen = get ("wachsen"); wachsZeit = get ("wachsZeit");
         for (int i = 0; i < MoosParams::numModSlots; ++i)
         {
             const auto n = juce::String (i + 1);
@@ -75,7 +77,7 @@ private:
     AF posA{}, octA{}, levelA{}, posB{}, octB{}, fineB{}, levelB{}, uniVoices{}, uniDetune{}, uniWidth{};
     AF cutoff{}, reso{}, envAmt{}, fA{}, fD{}, fS{}, fR{}, aA{}, aD{}, aS{}, aR{};
     AF lfoRate{}, lfoShape{}, lfoPos{}, lfoCut{}, lfo2Rate{}, lfo2Shape{};
-    AF drift{}, glide{}, mono{}, bendRange{};
+    AF drift{}, glide{}, mono{}, bendRange{}, wachsen{}, wachsZeit{};
     AF modSrc[MoosParams::numModSlots]{}, modDst[MoosParams::numModSlots]{}, modAmt[MoosParams::numModSlots]{};
 
     std::atomic<const WavetableBank*> banks[2] { nullptr, nullptr };
@@ -92,7 +94,8 @@ private:
         float  cutDrift = 0.0f, cutDriftTgt = 0.0f;
         float  lastPos[2] { 0.0f, 0.0f }, lastGain = 0.0f;
         float  ic1L = 0, ic2L = 0, ic1R = 0, ic2R = 0;
-        juce::ADSR amp, flt;
+        double grownSec = 0.0;      // Wachsen: wie lange die Note schon liegt
+        tmk::Adsr amp, flt;
     };
 
     Voice voices[maxVoices];
@@ -111,6 +114,7 @@ private:
     struct BP
     {
         float posA, posB, levelA, levelB, uniDetune, uniWidth, cutoff, k, envAmt, lfoPos, lfoCut, drift, glide;
+        float grow, growTime;
         int octA, octB, nUni, lfoShape[2];
         float fineB, bendRange;
         double lfoInc[2];
@@ -132,6 +136,7 @@ private:
         bp.lfoInc[1] = lfo2Rate->load() / sr; bp.lfoShape[1] = (int) lfo2Shape->load();
         bp.drift = drift->load(); bp.glide = glide->load(); bp.bendRange = bendRange->load();
         bp.mono = mono->load() > 0.5f;
+        bp.grow = wachsen->load(); bp.growTime = juce::jmax (0.5f, wachsZeit->load());
         if (bp.mono != prevMono) { prevMono = bp.mono; allNotesOff(); }
         for (int i = 0; i < MoosParams::numModSlots; ++i)
         {
@@ -192,6 +197,7 @@ private:
             v.ic1L = v.ic2L = v.ic1R = v.ic2R = 0.0f;
             v.lastPos[0] = bp.posA; v.lastPos[1] = bp.posB;
             v.lastGain = 0.0f;
+            v.grownSec = 0.0;
             v.amp.reset(); v.flt.reset();
         }
         v.amp.noteOn();
@@ -321,6 +327,18 @@ private:
         for (int i = 0; i < numModSlots; ++i)
             if (bp.src[i] != srcOff)
                 d[juce::jlimit (0, numDests - 1, bp.dst[i])] += bp.amt[i] * src[juce::jlimit (0, 8, bp.src[i])];
+
+        // --- Wachsen: das Moos wächst, solange die Note klingt (langsam, wie eine Hüllkurve über viele Sekunden) ---
+        v.grownSec += (double) n / sr;
+        if (bp.grow > 0.0f)
+        {
+            const float g = bp.grow * (1.0f - (float) std::exp (-v.grownSec / bp.growTime));
+            d[dstPosA] += 0.35f * g;
+            d[dstPosB] += 0.25f * g;
+            d[dstCutoff] += 0.5f * g;            // bis +2.5 Oktaven
+            d[dstUniDetune] += 0.25f * g;        // bis +15 Cent breiter
+            d[dstLevelB] += 0.15f * g;
+        }
 
         // --- Drift (langsamer Zufallsweg) ---
         const float driftSmooth = 1.0f - std::exp (-(float) n / (0.8f * (float) sr));

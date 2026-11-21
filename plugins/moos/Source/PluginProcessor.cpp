@@ -169,7 +169,7 @@ int MoosProcessor::getNumPrograms() { return (int) MoosPresets::factory().size()
 const juce::String MoosProcessor::getProgramName (int i)
 {
     const auto& f = MoosPresets::factory();
-    return juce::isPositiveAndBelow (i, (int) f.size()) ? juce::String (f[(size_t) i].name) : juce::String();
+    return juce::isPositiveAndBelow (i, (int) f.size()) ? juce::String::fromUTF8 (f[(size_t) i].name) : juce::String();
 }
 
 void MoosProcessor::setCurrentProgram (int i) { loadFactoryPreset (i); }
@@ -182,7 +182,7 @@ void MoosProcessor::loadFactoryPreset (int index)
     MoosPresets::apply (apvts, f[(size_t) index]);
     resetWavetable (0);
     resetWavetable (1);
-    apvts.state.setProperty ("presetName", f[(size_t) index].name, nullptr);
+    apvts.state.setProperty ("presetName", juce::String::fromUTF8 (f[(size_t) index].name), nullptr);
     ++presetChangeCounter;
 }
 

@@ -102,6 +102,10 @@ namespace MoosParams
         p.push_back (std::make_unique<P>  (ID { "delayMix", 2 },  "Delay Mix", 0.0f, 1.0f, 0.0f));
         p.push_back (std::make_unique<P>  (ID { "shimmer", 2 },   "Shimmer", 0.0f, 1.0f, 0.0f));
 
+        // --- Version 3: Wachsen – solange eine Taste liegt, wächst das Moos: Position wandert, Filter öffnet, Unison breitet sich aus
+        p.push_back (std::make_unique<P>  (ID { "wachsen", 3 },   "Wachsen", 0.0f, 1.0f, 0.0f));
+        p.push_back (std::make_unique<P>  (ID { "wachsZeit", 3 }, "Wachszeit (s)", skewed (1.0f, 60.0f, 10.0f), 12.0f));
+
         return { p.begin(), p.end() };
     }
 }

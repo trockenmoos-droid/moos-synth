@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tm/TmEnvelope.h>
 #include <tm/TmProcessor.h>
 #include <tm/TmReverb.h>
 
@@ -43,7 +44,7 @@ private:
         double phase[dachstein::maxPartials][2] {};
         float drift[dachstein::maxPartials] {}, driftTarget[dachstein::maxPartials] {};
         double subPhase = 0.0;
-        juce::ADSR env;
+        tmk::Adsr env;
     };
 
     void handleMidi (const juce::MidiMessage&);

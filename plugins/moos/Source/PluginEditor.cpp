@@ -233,6 +233,7 @@ MoosEditor::MoosEditor (MoosProcessor& p)
     addSection ("AMP ENV", 0, { knob ("aA", "Attack"), knob ("aD", "Decay"), knob ("aS", "Sustain"), knob ("aR", "Release") });
     addSection ("SPIELWEISE", 0, { knob ("glide", "Glide"), knob ("bendRange", "Bend"), toggle ("mono", "MONO") });
     addSection ("AUSGANG", 0, { knob ("volume", "Volume") });
+    addSection ("WACHSEN", 0, { knob ("wachsen", "Wachsen"), knob ("wachsZeit", "Zeit") });
 
     // --- SEITE 2: MODULATION ---
     addSection ("LFO 1", 1, { knob ("lfoRate", "Rate"), combo ("lfoShape", "Form"), knob ("lfoPos", "> Position"), knob ("lfoCut", "> Cutoff") });
@@ -467,10 +468,11 @@ void MoosEditor::layoutContent()
     layoutSection (find ("UNISON"), r2[0]);
     layoutSection (find ("FILTER"), r2[1]);
     layoutSection (find ("FILTER ENV"), r2[2]);
-    auto r3 = split (row (2), { 4, 3, 2 });
+    auto r3 = split (row (2), { 4, 3, 2, 1 });
     layoutSection (find ("AMP ENV"), r3[0]);
     layoutSection (find ("SPIELWEISE"), r3[1]);
-    layoutSection (find ("AUSGANG"), r3[2]);
+    layoutSection (find ("WACHSEN"), r3[2]);
+    layoutSection (find ("AUSGANG"), r3[3]);
 
     // Seite 2
     auto m1 = split (row (0), { 3, 2 });
@@ -513,7 +515,11 @@ void MoosEditor::paintContent (juce::Graphics& g)
     g.setColour (lichen.withAlpha (0.7f));
     g.setFont (juce::FontOptions (10.5f));
     g.drawText ("wavetable pads", 108, 14, 90, 16, juce::Justification::centredLeft);
-    g.drawText ("trockenmoos  v0.2", 108, 28, 90, 16, juce::Justification::centredLeft);
+   #ifdef JucePlugin_VersionString
+    g.drawText ("trockenmoos  v" JucePlugin_VersionString, 108, 28, 120, 16, juce::Justification::centredLeft);
+   #else
+    g.drawText ("trockenmoos", 108, 28, 120, 16, juce::Justification::centredLeft);
+   #endif
 
     for (auto& s : sections)
     {
@@ -573,7 +579,7 @@ void MoosEditor::refreshPresetList()
     presetBox.addSectionHeading ("Werkspresets");
     const auto& f = MoosPresets::factory();
     for (int i = 0; i < (int) f.size(); ++i)
-        presetBox.addItem (f[(size_t) i].name, i + 1);
+        presetBox.addItem (juce::String::fromUTF8 (f[(size_t) i].name), i + 1);
 
     userPresetFiles = MoosPresets::userPresets();
     if (! userPresetFiles.isEmpty())

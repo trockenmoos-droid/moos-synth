@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tm/TmEnvelope.h>
 #include <tm/TmProcessor.h>
 #include <tm/TmReverb.h>
 #include <tm/TmVoices.h>
@@ -64,7 +65,7 @@ public:
     void kill() { env.reset(); active = false; }
     void render (float* L, float* R, int n, const tmk::PlayContext& ctx);
 
-    juce::ADSR env;
+    tmk::Adsr env;
 
 private:
     double sr = 48000.0;

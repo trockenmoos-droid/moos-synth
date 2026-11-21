@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tm/TmEnvelope.h>
 #include <tm/TmProcessor.h>
 #include <tm/TmReverb.h>
 #include <tm/TmInstruments.h>
@@ -84,7 +85,7 @@ public:
         if (! env.isActive()) active = false;
     }
 
-    juce::ADSR env;
+    tmk::Adsr env;
 
 private:
     double sr = 48000.0;
