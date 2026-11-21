@@ -21,6 +21,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "windFarbe", 1 }, "Windfarbe (Hz)", tmk::skewed (200.0f, 8000.0f, 1500.0f), 1500.0f));
     p.push_back (std::make_unique<P>  (ID { "boeen", 1 },     u8 ("B\xc3\xb6" "en"), 0.0f, 1.0f, 0.4f));
     p.push_back (std::make_unique<P>  (ID { "knistern", 1 },  "Knistern", 0.0f, 1.0f, 0.15f));
+    // Kalben (neu in 0.2): Gletscherabbrüche – Häufigkeit und Wucht; Tasten unter C1 lösen einen aus
+    p.push_back (std::make_unique<P>  (ID { "kalben", 1 },    "Kalben", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<P>  (ID { "attack", 1 },    "Attack (s)", tmk::skewed (0.01f, 20.0f, 2.0f), 3.0f));
     p.push_back (std::make_unique<P>  (ID { "release", 1 },   "Release (s)", tmk::skewed (0.05f, 30.0f, 4.0f), 6.0f));
     p.push_back (std::make_unique<P>  (ID { "hall", 1 },      "Hall", 0.0f, 1.0f, 0.45f));
@@ -43,6 +45,8 @@ static std::vector<tmk::Preset> factoryPresets()
         { "Tiefer Firn",       { { "fels", 0.85f }, { "obertoene", 0.15f }, { "attack", 6.0f }, { "teiltoene", 12 }, { "wind", 0.1f }, { "hall", 0.35f } } },
         { "Riesen-Eish\xc3\xb6hle", { { "hall", 1.0f }, { "knistern", 0.35f }, { "bewegung", 0.65f }, { "tempo", 0.05f }, { "kristall", 0.45f },
                                  { "release", 15.0f } } },
+        { "Kalbende Front",    { { "kalben", 0.75f }, { "fels", 0.6f }, { "obertoene", 0.45f }, { "kristall", 0.35f }, { "bewegung", 0.55f },
+                                 { "wind", 0.25f }, { "hall", 0.7f }, { "release", 12.0f } } },
         { "Schmelzwasser",     { { "tempo", 1.6f }, { "bewegung", 0.9f }, { "schmelze", 0.5f }, { "obertoene", 0.6f }, { "wind", 0.15f },
                                  { "attack", 1.0f } } },
     };
@@ -57,6 +61,7 @@ DachsteinProcessor::DachsteinProcessor()
     bewegung = get ("bewegung"); tempo = get ("tempo"); schmelze = get ("schmelze"); breite = get ("breite");
     fels = get ("fels"); wind = get ("wind"); windFarbe = get ("windFarbe"); boeen = get ("boeen");
     knistern = get ("knistern"); attack = get ("attack"); release = get ("release"); hall = get ("hall"); volume = get ("volume");
+    kalben = get ("kalben");
 
     sine.resize (sineSize + 1);
     for (int i = 0; i <= sineSize; ++i) sine[(size_t) i] = (float) std::sin (juce::MathConstants<double>::twoPi * i / sineSize);
@@ -87,10 +92,42 @@ void DachsteinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     windLp = gust = gustTarget = act = 0.0f;
     for (int c = 0; c < 2; ++c) windIc1[c] = windIc2[c] = 0.0f;
     for (auto& p : pings) p = {};
+    rumbleEnv = rumbleRise = crackEnv = 0.0f;
+    for (auto& r : rumbleLp) r[0] = r[1] = 0.0f;
+    calvePending = false;
+}
+
+void DachsteinProcessor::calve (float strength)
+{
+    rumbleRise = juce::jlimit (0.2f, 1.0f, strength) * (0.6f + 0.4f * rng.nextFloat());
+    rumbleSize = 0.7f + 0.6f * rng.nextFloat();
+    rumbleCoef = std::exp (-1.0f / ((2.5f + 4.0f * rng.nextFloat()) * (float) sr));
+    crackEnv = juce::jlimit (0.2f, 1.0f, strength);
+    // das Eis ordnet sich neu: alle Teiltöne springen zu neuen Zielen
+    for (auto& v : voices)
+        if (v.active)
+            for (int k = 0; k < maxPartials; ++k) { v.driftTarget[k] = rng.nextFloat(); v.drift[k] = 0.5f * (v.drift[k] + v.driftTarget[k]); }
+    // ein paar Splitter im Knistern
+    for (int s = 0; s < 3; ++s)
+    {
+        auto& p = pings[nextPing]; nextPing = (nextPing + 1) % 6;
+        const float f = 900.0f + rng.nextFloat() * 5000.0f, rr = std::exp (-1.0f / ((0.01f + 0.04f * rng.nextFloat()) * (float) sr));
+        p.b1 = 2.0f * rr * (float) std::cos (juce::MathConstants<double>::twoPi * juce::jmin ((double) f, 0.45 * sr) / sr);
+        p.b2 = -rr * rr;
+        const float pp = rng.nextFloat();
+        p.gainL = 0.06f * strength * std::sqrt (1.0f - pp); p.gainR = 0.06f * strength * std::sqrt (pp);
+        p.y1 += 1.0f;
+    }
 }
 
 void DachsteinProcessor::handleMidi (const juce::MidiMessage& m)
 {
+    if (m.isNoteOn() && m.getNoteNumber() < 24)      // unter C1: Kalben auslösen statt spielen
+    {
+        calvePending = true;
+        return;
+    }
+    if (m.isNoteOff() && m.getNoteNumber() < 24) return;
     if (m.isNoteOn())
     {
         Voice* t = nullptr;
@@ -230,13 +267,38 @@ void DachsteinProcessor::renderAmbience (float* L, float* R, int start, int n)
 {
     const float windAmt = wind->load(), gusts = boeen->load(), crackle = knistern->load();
     const float centre = windFarbe->load();
-    if (act < 1.0e-4f && windAmt <= 0.0f && crackle <= 0.0f) return;
+    const float calveAmt = kalben->load();
+    if (act < 1.0e-4f && windAmt <= 0.0f && crackle <= 0.0f && rumbleEnv < 1.0e-5f && ! calvePending) return;
+    // Rumpeln: tiefes, gefiltertes Rauschen (ca. 60–180 Hz)
+    const float gR = (float) std::tan (juce::MathConstants<double>::pi * 110.0 * rumbleSize / sr);
+    const float aR = gR / (1.0f + gR);
+    const float pCalve = calveAmt * calveAmt / (float) (sr * 9.0);   // bei voller Stärke etwa alle 9 s
 
     const float gustSmooth = 1.0f - std::exp (-1.0f / (0.9f * (float) sr));
     const float pTrigger = crackle * crackle * 0.0012f;
 
     for (int i = 0; i < n; ++i)
     {
+        // Kalben
+        if (calvePending || (calveAmt > 0.0f && act > 0.05f && rumbleEnv < 0.05f && rng.nextFloat() < pCalve))
+        {
+            calve (calvePending ? juce::jmax (0.7f, calveAmt) : calveAmt * (0.5f + 0.5f * rng.nextFloat()));
+            calvePending = false;
+        }
+        if (rumbleRise > 0.0f) { rumbleEnv += (rumbleRise - rumbleEnv) * 0.00012f; if (rumbleEnv >= rumbleRise * 0.97f) rumbleRise = 0.0f; }
+        else rumbleEnv *= rumbleCoef;
+        float rumble[2] = { 0.0f, 0.0f };
+        if (rumbleEnv > 1.0e-5f)
+            for (int c = 0; c < 2; ++c)
+            {
+                const float x = rng.nextFloat() * 2.0f - 1.0f;
+                rumbleLp[c][0] += aR * (x - rumbleLp[c][0]);
+                rumbleLp[c][1] += aR * (rumbleLp[c][0] - rumbleLp[c][1]);
+                rumble[c] = rumbleLp[c][1] * rumbleEnv * 26.0f;
+            }
+        float crack = 0.0f;
+        if (crackEnv > 1.0e-4f) { crack = (rng.nextFloat() * 2.0f - 1.0f) * crackEnv * 0.35f; crackEnv *= 0.9985f; }
+
         // Böen: langsamer Zufallsweg
         if (rng.nextFloat() < 1.0f / (float) (sr * 1.4)) gustTarget = rng.nextFloat();
         gust += (gustTarget - gust) * gustSmooth;
@@ -281,9 +343,10 @@ void DachsteinProcessor::renderAmbience (float* L, float* R, int start, int n)
             out[0] += y * p.gainL; out[1] += y * p.gainR;
         }
 
-        L[start + i] += out[0];
-        R[start + i] += out[1];
+        L[start + i] += out[0] + rumble[0] + crack;
+        R[start + i] += out[1] + rumble[1] + crack * 0.8f;
     }
+    calving = rumbleEnv;
 }
 
 void DachsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

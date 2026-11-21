@@ -58,6 +58,26 @@ public:
             g.drawLine (x - w * 0.15f, area.getY() + 2.0f, x - w * 0.05f, area.getY() + len * 0.7f, 1.0f);
         }
 
+        // Kalben: ein Riss läuft durch das Eis, solange es grollt
+        const float cv = proc.calvingLevel();
+        if (cv > 0.01f)
+        {
+            juce::Random cr (crackSeed);
+            juce::Path crack;
+            float x = area.getX() + area.getWidth() * (0.2f + 0.6f * cr.nextFloat()), y = area.getY();
+            crack.startNewSubPath (x, y);
+            while (y < area.getBottom())
+            {
+                x += (cr.nextFloat() - 0.5f) * 26.0f; y += 6.0f + cr.nextFloat() * 12.0f;
+                crack.lineTo (x, juce::jmin (y, area.getBottom()));
+            }
+            g.setColour (juce::Colours::white.withAlpha (juce::jmin (1.0f, cv * 1.5f)));
+            g.strokePath (crack, juce::PathStrokeType (1.0f + 2.5f * cv));
+            g.setColour (theme.accent.withAlpha (juce::jmin (0.6f, cv)));
+            g.strokePath (crack, juce::PathStrokeType (5.0f * cv + 1.0f), juce::AffineTransform::translation (1.5f, 0.0f));
+        }
+        else crackSeed = (int) juce::Time::getMillisecondCounter();
+
         // Grundton-Raster (Harmonische) zum Vergleich: zeigt, wie "Kristall" die Teiltöne dehnt
         g.setColour (theme.text.withAlpha (0.18f));
         for (int h = 1; h <= 32; h *= 2)
@@ -75,6 +95,7 @@ private:
     void timerCallback() override { repaint(); }
     DachsteinProcessor& proc;
     tmk::Theme theme;
+    int crackSeed = 1;
 };
 
 class DachsteinEditor : public tmk::Editor

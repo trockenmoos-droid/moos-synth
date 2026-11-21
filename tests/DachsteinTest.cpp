@@ -44,6 +44,26 @@ int main (int argc, char** argv)
         tt::check (tt::peak (out, (int) (sr * 5), (int) (sr * 0.9)) < 0.001f, "Klingt nach Release aus");
     }
 
+    // Kalben: Taste unter C1 löst einen Abbruch aus – tiefes Grollen kommt dazu
+    {
+        proc.setCurrentProgram (0);
+        auto lowEnergy = [&] (const juce::AudioBuffer<float>& b, double t0, double len)
+        {
+            double lp = 0.0, e = 0.0; const float a = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 150.0f / (float) sr);
+            for (int i = (int) (t0 * sr); i < (int) ((t0 + len) * sr); ++i) { lp += a * (b.getSample (0, i) - lp); e += lp * lp; }
+            return std::sqrt (e / (len * sr));
+        };
+        auto quiet = play (6.0, 5.5);
+        auto calved = play (6.0, 5.5, { juce::MidiMessage::noteOn (1, 12, 1.0f) });
+        const double q = lowEnergy (quiet, 1.5, 2.0), c = lowEnergy (calved, 1.5, 2.0);
+        tt::check (tt::finite (calved) && c > q * 1.5 && tt::peak (calved, 0, calved.getNumSamples()) < 1.0f,
+                   juce::String::formatted ("Kalben: Tiefen-Energie %.4f -> %.4f", q, c));
+        proc.setCurrentProgram (proc.getNumPrograms() - 2);
+        auto front = play (20.0, 16.0);
+        tt::check (tt::finite (front) && tt::peak (front, 0, front.getNumSamples()) < 1.0f, "Kalbende Front: 20 s stabil");
+        tt::writeWav (dir.getChildFile ("dachstein_kalben.wav"), front, sr);
+    }
+
     // 8 Stimmen, alles auf Maximum
     proc.setCurrentProgram (0);
     for (auto id : { "obertoene", "kristall", "teiltoene", "bewegung", "schmelze", "fels", "wind", "knistern", "hall", "volume" })

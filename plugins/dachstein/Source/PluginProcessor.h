@@ -71,11 +71,20 @@ private:
     Ping pings[6];
     int nextPing = 0;
 
+    // Kalben: ein Stück Gletscher bricht ab – Krachen, langes Grollen, das Spektrum ordnet sich neu
+    void calve (float strength);
+    float rumbleEnv = 0.0f, rumbleRise = 0.0f, rumbleCoef = 0.9999f, crackEnv = 0.0f, rumbleLp[2][2] {}, rumbleSize = 1.0f;
+    bool calvePending = false;
+    std::atomic<float> calving { 0.0f };
+public:
+    float calvingLevel() const { return calving.load(); }
+private:
+
     tmk::FdnReverb reverb;
     juce::AudioBuffer<float> wet;
     juce::SmoothedValue<float> gainSm;
 
     using AF = std::atomic<float>*;
     AF obertoene{}, kristall{}, spalten{}, teiltoene{}, bewegung{}, tempo{}, schmelze{}, breite{}, fels{},
-       wind{}, windFarbe{}, boeen{}, knistern{}, attack{}, release{}, hall{}, volume{};
+       wind{}, windFarbe{}, boeen{}, knistern{}, attack{}, release{}, hall{}, volume{}, kalben{};
 };

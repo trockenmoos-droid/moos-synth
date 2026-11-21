@@ -35,7 +35,7 @@ DachsteinEditor::DachsteinEditor (DachsteinProcessor& p)
                                            knob ("spalten", "Spalten"), knob ("teiltoene", u8 ("Teilt\xc3\xb6ne")) });
     addSection ("BEWEGUNG", { knob ("bewegung", "Bewegung"), knob ("tempo", "Tempo"), knob ("schmelze", "Schmelze"), knob ("breite", "Breite") });
     addSection ("FELS & WIND", { knob ("fels", "Fels"), knob ("wind", "Wind"), knob ("windFarbe", "Farbe"), knob ("boeen", u8 ("B\xc3\xb6" "en")) });
-    addSection ("EIS", { knob ("knistern", "Knistern") });
+    addSection ("EIS", { knob ("knistern", "Knistern"), knob ("kalben", "Kalben") });
     addSection (u8 ("H\xc3\x9cLLE"), { knob ("attack", "Attack"), knob ("release", "Release") });
     addSection ("AUSGANG", { knob ("hall", "Hall"), knob ("volume", u8 ("Lautst\xc3\xa4rke")) });
     finishSetup();
@@ -50,7 +50,7 @@ void DachsteinEditor::layoutBody (juce::Rectangle<int> body)
     auto r2 = split (body.removeFromTop (rowH), { 1, 1 });
     layoutSection ("BEWEGUNG", r2[0]);
     layoutSection ("FELS & WIND", r2[1]);
-    auto r3 = split (body, { 2, 4, 4 });
+    auto r3 = split (body, { 1, 1, 1 });
     layoutSection ("EIS", r3[0]);
     layoutSection (u8 ("H\xc3\x9cLLE"), r3[1]);
     layoutSection ("AUSGANG", r3[2]);
