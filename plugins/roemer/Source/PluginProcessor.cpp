@@ -19,6 +19,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<PC> (ID { "raum", 1 },        "Ort", juce::StringArray { "Villa", "Therme", "Arena" }, 1));
     p.push_back (std::make_unique<P>  (ID { "hall", 1 },        "Hall", 0.0f, 1.0f, 0.35f));
     p.push_back (std::make_unique<P>  (ID { "volume", 1 },      u8 ("Lautst\xc3\xa4rke (dB)"), -48.0f, 6.0f, -6.0f));
+    // Signal (neu in 0.2): Naturton-Rufe wie bei der Legion, im Takt
+    p.push_back (std::make_unique<PC> (ID { "signal", 1 },      "Signal", roemer::signals, 0));
+    p.push_back (std::make_unique<PC> (ID { "signalTakt", 1 },  "Signal-Takt", roemer::signalRates, 1));
     return { p.begin(), p.end() };
 }
 
@@ -33,6 +36,10 @@ static std::vector<tmk::Preset> factoryPresets()
         { "Orgel und Horn",      { { "hydraulis", 0.6f }, { "cornu", 0.6f }, { "hell", 0.5f } } },
         { "Noricum bei Nacht",   { { "hydraulis", 0.7f }, { "reihen", 0.0f }, { "luft", 0.6f }, { "wasserdruck", 0.6f }, { "attack", 1.2f },
                                    { "release", 2.5f }, { "raum", 2 }, { "hall", 0.7f } } },
+        { "Legion r\xc3\xbc" "ckt an", { { "hydraulis", 0.0f }, { "cornu", 1.0f }, { "hell", 0.7f }, { "anblasen", 0.5f }, { "signal", 2 },
+                                   { "signalTakt", 1 }, { "attack", 0.02f }, { "release", 0.2f }, { "raum", 2 }, { "hall", 0.45f } } },
+        { "Wasserorgel-Lauf",    { { "hydraulis", 0.85f }, { "cornu", 0.0f }, { "signal", 1 }, { "signalTakt", 3 }, { "reihen", 0.5f },
+                                   { "wasserdruck", 0.5f }, { "attack", 0.01f }, { "release", 0.15f } } },
         { "Cornu weich",         { { "hydraulis", 0.0f }, { "cornu", 0.85f }, { "hell", 0.3f }, { "anblasen", 0.15f }, { "attack", 0.12f } } },
     };
 }
@@ -45,6 +52,8 @@ RoemerProcessor::RoemerProcessor()
     hydraulis = get ("hydraulis"); wasserdruck = get ("wasserdruck"); blubbern = get ("blubbern"); luft = get ("luft"); reihen = get ("reihen");
     cornu = get ("cornu"); hell = get ("hell"); anblasen = get ("anblasen"); attack = get ("attack"); release = get ("release");
     raum = get ("raum"); hall = get ("hall"); volume = get ("volume");
+    signal = get ("signal"); signalTakt = get ("signalTakt");
+    heldKeys.reserve (128);
 }
 
 bool RoemerProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -65,6 +74,8 @@ void RoemerProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     press = pressTarget = 0.0f; act = 0.0f;
     gainSm.reset (sampleRate, 0.05);
     gainSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -48.0f));
+    heldKeys.clear(); sigStep = 0; sigNote = -1; sigOffLeft = 0; untilSig = 0.0;
+    sigBuf.ensureSize (4096);
 }
 
 void RoemerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -89,7 +100,8 @@ void RoemerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
 
     auto* L = buffer.getWritePointer (0);
     auto* R = buffer.getWritePointer (1);
-    voices.process (L, R, n, midi);
+    signalMidi (midi, n);
+    voices.process (L, R, n, sigBuf);
 
     // Blubbern im Wasserkessel: kurze, tiefe Resonanzen, nur während gespielt wird
     act += ((voices.activeCount() > 0 ? 1.0f : 0.0f) - act) * juce::jmin (1.0f, blockSec * 2.0f);
@@ -127,6 +139,58 @@ void RoemerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         R[i] = std::tanh ((R[i] * (1.0f - 0.35f * h) + wr[i] * h) * g);
     }
     scope.push (L, R, n);
+}
+
+// Signal: solange eine Taste gehalten wird, bläst das Cornu Rufe aus Naturtönen über diesem Ton
+void RoemerProcessor::signalMidi (const juce::MidiBuffer& in, int n)
+{
+    static const int pattern[3][8] = { { 3, 4, 5, 6, 8, 6, 5, 4 },          // Signal: auf und ab
+                                       { 3, 3, 4, 3, 4, 5, 4, 0 },          // Fanfare (0 = Pause)
+                                       { 0, 0, 0, 0, 0, 0, 0, 0 } };        // Zufall
+    const int mode = (int) signal->load();
+    sigBuf.clear();
+    const double step = roemer::signalBeats ((int) signalTakt->load()) * 60.0 / readBpm() * rp.sr;
+    auto stopSig = [&] (int at) { if (sigNote >= 0) { sigBuf.addEvent (juce::MidiMessage::noteOff (1, sigNote), at); sigNote = -1; } };
+    auto it = in.cbegin();
+    for (int i = 0; i < n; ++i)
+    {
+        for (; it != in.cend() && (*it).samplePosition <= i; ++it)
+        {
+            const auto m = (*it).getMessage();
+            if (mode == 0) { sigBuf.addEvent (m, i); continue; }
+            if (m.isNoteOn())
+            {
+                const bool first = heldKeys.empty();
+                heldKeys.erase (std::remove (heldKeys.begin(), heldKeys.end(), m.getNoteNumber()), heldKeys.end());
+                heldKeys.push_back (m.getNoteNumber());
+                if (first) { untilSig = 0.0; sigStep = 0; }
+            }
+            else if (m.isNoteOff())
+            {
+                heldKeys.erase (std::remove (heldKeys.begin(), heldKeys.end(), m.getNoteNumber()), heldKeys.end());
+                if (heldKeys.empty()) stopSig (i);
+            }
+            else if (m.isAllNotesOff() || m.isAllSoundOff()) { heldKeys.clear(); stopSig (i); sigBuf.addEvent (m, i); }
+            else sigBuf.addEvent (m, i);
+        }
+        if (mode == 0) { if (sigNote >= 0 || ! heldKeys.empty()) { stopSig (i); heldKeys.clear(); } continue; }
+        if (sigOffLeft > 0 && --sigOffLeft == 0) stopSig (i);
+        if (heldKeys.empty()) continue;
+        untilSig -= 1.0;
+        if (untilSig > 0.0) continue;
+        untilSig += step;
+        static const int naturals[6] = { 2, 3, 4, 5, 6, 8 };
+        const int h = mode == 3 ? naturals[sigRng.nextInt (6)] : pattern[juce::jlimit (0, 2, mode - 1)][sigStep % 8];
+        ++sigStep;
+        stopSig (i);
+        if (h == 0) continue;                                   // Atempause
+        const int note = juce::jlimit (0, 127, heldKeys.back() + roemer::harmonicSemis (h));
+        const float vel = (sigStep % 4 == 1) ? 0.95f : 0.75f;   // Betonung auf dem ersten von vier
+        sigBuf.addEvent (juce::MidiMessage::noteOn (1, note, vel), i);
+        sigNote = note;
+        sigOffLeft = juce::jmax (1, (int) (step * 0.82));
+        ++signalNotes;
+    }
 }
 
 juce::AudioProcessorEditor* RoemerProcessor::createEditor() { return new RoemerEditor (*this); }

@@ -37,6 +37,7 @@ RoemerEditor::RoemerEditor (RoemerProcessor& p)
     addSection ("CORNU", { knob ("cornu", "Pegel"), knob ("hell", "Helligkeit"), knob ("anblasen", "Anblasen") });
     addSection (u8 ("H\xc3\x9cLLE"), { knob ("attack", "Attack"), knob ("release", "Release") });
     addSection ("ORT", { combo ("raum", "Ort", 1.2f), knob ("hall", "Hall"), knob ("volume", u8 ("Lautst\xc3\xa4rke")) });
+    addSection ("SIGNAL", { combo ("signal", "Signal", 1.2f), combo ("signalTakt", "Takt", 1.0f) });
     finishSetup();
 }
 
@@ -47,7 +48,8 @@ void RoemerEditor::layoutBody (juce::Rectangle<int> body)
     auto r2 = split (body.removeFromTop (rowH), { 5, 3 });
     layoutSection ("HYDRAULIS", r2[0]);
     layoutSection ("CORNU", r2[1]);
-    auto r3 = split (body, { 2, 3 });
+    auto r3 = split (body, { 2, 2, 3 });
     layoutSection (u8 ("H\xc3\x9cLLE"), r3[0]);
-    layoutSection ("ORT", r3[1]);
+    layoutSection ("SIGNAL", r3[1]);
+    layoutSection ("ORT", r3[2]);
 }

@@ -48,6 +48,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "ton", 1 },       u8 ("H\xc3\xa4nde"), 0.0f, 1.0f, 0.5f));
     p.push_back (std::make_unique<P>  (ID { "raum", 1 },      "Wirtshaus", 0.0f, 1.0f, 0.3f));
     p.push_back (std::make_unique<P>  (ID { "output", 1 },    "Ausgang (dB)", -24.0f, 12.0f, 0.0f));
+    // Stampfen (neu in 0.2): Schuhe auf dem Holzboden, im Takt
+    p.push_back (std::make_unique<P>  (ID { "stampfen", 1 },  "Stampfen", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<PC> (ID { "stampfmuster", 1 }, "Stampf-Muster", stompPatterns, 1));
     const char* defClap = "x.xxx.x.xxx.....";
     for (int s = 0; s < numSteps; ++s)
         p.push_back (std::make_unique<PB> (ID { gateId (s), 1 }, "Gate " + juce::String (s + 1), true));
@@ -68,6 +71,10 @@ static std::vector<tmk::Preset> factoryPresets()
                                                                                            { "klatsch", 0.0f }, { "swing", 0.0f }, { "glaetten", 3.0f } }) },
         { "Schmuggler-Pfad",      with (pattern ("xx.xx.xx.xx.....", "x..x..x..x......"), { { "schmuggel", 0.45f }, { "tiefe", 0.7f }, { "mensch", 0.5f } }) },
         { "Polka-Paschen",        with (pattern (allOn, "x.x.x.x.x.x.x.x."), { { "laenge", 16 }, { "rate", 0 }, { "swing", 0.15f } }) },
+        { "Stampfen und Paschen", with (pattern (allOn, "x.xxx.x.xxx....."), { { "stampfen", 0.8f }, { "stampfmuster", 1 }, { "klatscher", 4 },
+                                                                               { "mensch", 0.45f }, { "raum", 0.45f } }) },
+        { "Holzboden-Viertel",    with (pattern (allOn, "................"), { { "stampfen", 1.0f }, { "stampfmuster", 0 }, { "klatsch", 0.0f },
+                                                                               { "raum", 0.35f } }) },
         { "Leises Mitklatschen",  with (pattern (allOn, "x.xxx.x.xxx....."), { { "klatsch", 0.35f }, { "klatscher", 2 }, { "raum", 0.6f } }) },
     };
 }
@@ -81,6 +88,7 @@ PascherProcessor::PascherProcessor()
     rate = get ("rate"); laenge = get ("laenge"); swing = get ("swing"); schmuggel = get ("schmuggel"); tiefe = get ("tiefe");
     glaetten = get ("glaetten"); mix = get ("mix"); klatsch = get ("klatsch"); klatscher = get ("klatscher"); mensch = get ("mensch");
     ton = get ("ton"); raum = get ("raum"); output = get ("output");
+    stampfen = get ("stampfen"); stampfmuster = get ("stampfmuster");
     for (int s = 0; s < numSteps; ++s) { gates[s] = get (gateId (s)); clapSteps[s] = get (clapId (s)); }
 }
 
@@ -96,6 +104,8 @@ void PascherProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     sr = sampleRate;
     freePpq = 0.0; lastStep = -1; gateGain = 1.0f;
     for (auto& c : claps) c.active = false;
+    for (auto& s : stomps) s.active = false;
+    lastBeat = -1;
     reverb.prepare (sr);
     clapBuf.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
     wet.setSize (2, juce::jmax (samplesPerBlock, maxChunk));
@@ -126,6 +136,20 @@ void PascherProcessor::triggerClaps (int offset, float accent)
             }
 }
 
+void PascherProcessor::triggerStomp (int offset, float accent)
+{
+    for (auto& s : stomps)
+        if (! s.active)
+        {
+            s.active = true; s.age = 0; s.phase = 0.0; s.woodPhase = 0.0;
+            s.delay = offset + (int) (rng.nextFloat() * mensch->load() * 0.018 * sr);
+            s.gain = accent * (0.8f + 0.2f * rng.nextFloat());
+            s.pan = (rng.nextFloat() * 2.0f - 1.0f) * 0.3f;
+            s.click.reset(); s.click.set (2200.0 + 1200.0 * rng.nextDouble(), sr, 1.2f);
+            return;
+        }
+}
+
 void PascherProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -154,6 +178,8 @@ void PascherProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     const float clapLevel = klatsch->load();
     const float smug = schmuggel->load();
 
+    const float stompLevel = stampfen->load();
+    const int stompMode = (int) stampfmuster->load();
     bool gateOn[numSteps], clapOn[numSteps];
     for (int s = 0; s < numSteps; ++s) { gateOn[s] = gates[s]->load() > 0.5f; clapOn[s] = clapSteps[s]->load() > 0.5f; }
 
@@ -179,6 +205,17 @@ void PascherProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
             bool clap = clapOn[step];
             if (smug > 0.0f && rng.nextFloat() < smug * 0.35f) clap = ! clap;
             if (clap && clapLevel > 0.0f) triggerClaps (i, (step % 3 == 0 ? 1.0f : 0.75f) * (clap == clapOn[step] ? 1.0f : 0.5f));
+            if (stompMode == 3 && clap && stompLevel > 0.0f && step % 2 == 0) triggerStomp (i, 0.8f);
+        }
+        // Stampfen auf den Vierteln (je nach Muster)
+        const long long beat = (long long) std::floor (ppq + i * beatsPerSample);
+        if (beat != lastBeat)
+        {
+            const bool first = lastBeat < 0;
+            lastBeat = beat;
+            const int inBar = (int) (((beat % 4) + 4) % 4);
+            const bool hit = stompMode == 0 || (stompMode == 1 && inBar % 2 == 0) || (stompMode == 2 && inBar == 0);
+            if (! first && hit && stompLevel > 0.0f && stompMode != 3) triggerStomp (i, inBar == 0 ? 1.0f : 0.8f);
         }
         const float target = gateOn[step] ? 1.0f : 1.0f - depth;
         gateGain = target + smooth * (gateGain - target);
@@ -212,6 +249,28 @@ void PascherProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         }
     }
 
+    // Stampfer rendern: tiefer, abfallender Ton (Boden) + Holzresonanz + kurzer Absatz-Klick
+    const float stompOut = stompLevel / juce::jmax (0.05f, clapLevel);       // unabhängig vom Klatsch-Pegel
+    for (auto& s : stomps)
+    {
+        if (! s.active) continue;
+        const float gl = std::sqrt (0.5f * (1.0f - s.pan)), gr = std::sqrt (0.5f * (1.0f + s.pan));
+        for (int i = 0; i < n; ++i)
+        {
+            if (s.delay > 0) { --s.delay; continue; }
+            const float t = (float) s.age++ / (float) sr;
+            const double f = 52.0 + 95.0 * std::exp (-t / 0.018f);
+            s.phase += f / sr; if (s.phase >= 1.0) s.phase -= 1.0;
+            s.woodPhase += 185.0 / sr; if (s.woodPhase >= 1.0) s.woodPhase -= 1.0;
+            const float body = (float) std::sin (juce::MathConstants<double>::twoPi * s.phase) * std::exp (-t / 0.085f);
+            const float wood = (float) std::sin (juce::MathConstants<double>::twoPi * s.woodPhase) * std::exp (-t / 0.03f) * 0.35f;
+            const float clk = s.click.bandpass (rng.nextFloat() * 2.0f - 1.0f) * std::exp (-t / 0.004f) * 0.6f;
+            const float x = (body + wood + clk) * s.gain * 0.55f * stompOut;
+            cl[i] += x * gl; cr[i] += x * gr;
+            if (t > 0.4f) { s.active = false; break; }
+        }
+    }
+
     // Wirtshaus: kleiner, warmer Raum nur für das Klatschen
     const float room = raum->load();
     tmk::FdnReverb::Settings rs;
@@ -223,8 +282,9 @@ void PascherProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     const auto* wl = wet.getReadPointer (0); const auto* wr = wet.getReadPointer (1);
     for (int i = 0; i < n; ++i)
     {
-        L[i] = std::tanh ((L[i] + (cl[i] + wl[i] * room) * clapLevel) * out);
-        R[i] = std::tanh ((R[i] + (cr[i] + wr[i] * room) * clapLevel) * out);
+        const float cg = juce::jmax (clapLevel, stompLevel > 0.0f ? 0.05f : 0.0f);
+        L[i] = std::tanh ((L[i] + (cl[i] + wl[i] * room) * cg) * out);
+        R[i] = std::tanh ((R[i] + (cr[i] + wr[i] * room) * cg) * out);
     }
 }
 

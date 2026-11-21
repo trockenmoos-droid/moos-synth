@@ -8,7 +8,7 @@ static void stopGenerators (juce::AudioProcessor& p)
     for (auto* prm : p.getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
             if (r->getParameterID() == "frei" || r->getParameterID() == "klatsch" || r->getParameterID() == "freeze"
-                || r->getParameterID() == "absperren" || r->getParameterID() == "kruste" || r->getParameterID() == "festhalten")
+                || r->getParameterID() == "absperren" || r->getParameterID() == "kruste" || r->getParameterID() == "festhalten" || r->getParameterID() == "stampfen")
                 r->setValueNotifyingHost (0.0f);
     // sehr hohes Feedback bei langen Zeiten klingt zu Recht länger als 17 s – für den Stille-Test zurücknehmen
     for (auto* prm : p.getParameters())

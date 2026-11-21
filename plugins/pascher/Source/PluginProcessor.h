@@ -13,6 +13,7 @@ namespace pascher
     inline double rateBeats (int i) { const double v[] = { 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125 }; return v[juce::jlimit (0, 4, i)]; }
     inline juce::String gateId (int s)  { return "g" + juce::String (s + 1); }
     inline juce::String clapId (int s)  { return "c" + juce::String (s + 1); }
+    inline const juce::StringArray stompPatterns { "Viertel", "1 und 3", "Nur die Eins", "Mit dem Klatschen" };
 }
 
 class PascherProcessor : public tmk::Processor
@@ -42,6 +43,11 @@ private:
     };
 
     void triggerClaps (int sampleOffset, float accent);
+    // Stampfen: Schuhe auf dem Wirtshausboden
+    struct Stomp { bool active = false; int delay = 0, age = 0; float gain = 0.0f, pan = 0.0f; double phase = 0.0, woodPhase = 0.0; tmk::dsp::Svf click; };
+    Stomp stomps[6];
+    void triggerStomp (int offset, float accent);
+    long long lastBeat = -1;
 
     double sr = 48000.0;
     double freePpq = 0.0;
@@ -54,6 +60,6 @@ private:
     juce::SmoothedValue<float> mixSm;
 
     using AF = std::atomic<float>*;
-    AF rate{}, laenge{}, swing{}, schmuggel{}, tiefe{}, glaetten{}, mix{}, klatsch{}, klatscher{}, mensch{}, ton{}, raum{}, output{};
+    AF rate{}, laenge{}, swing{}, schmuggel{}, tiefe{}, glaetten{}, mix{}, klatsch{}, klatscher{}, mensch{}, ton{}, raum{}, output{}, stampfen{}, stampfmuster{};
     AF gates[pascher::numSteps]{}, clapSteps[pascher::numSteps]{};
 };

@@ -35,6 +35,7 @@ PascherEditor::PascherEditor (PascherProcessor& p)
     addSection ("KLATSCHER", { knob ("klatsch", "Pegel"), knob ("klatscher", "Anzahl"), knob ("mensch", "Mensch"),
                                knob ("ton", u8 ("H\xc3\xa4nde")), knob ("raum", "Wirtshaus") });
     addSection ("AUSGANG", { knob ("output", "Ausgang") });
+    addSection ("STAMPFEN", { knob ("stampfen", "Stampfen"), combo ("stampfmuster", "Muster", 1.4f) });
     finishSetup();
 }
 
@@ -45,7 +46,8 @@ void PascherEditor::layoutBody (juce::Rectangle<int> body)
     auto r2 = split (body.removeFromTop (body.getHeight() / 2), { 4, 3 });
     layoutSection ("TAKT", r2[0]);
     layoutSection ("GATE", r2[1]);
-    auto r3 = split (body, { 5, 1 });
+    auto r3 = split (body, { 5, 3, 1 });
     layoutSection ("KLATSCHER", r3[0]);
-    layoutSection ("AUSGANG", r3[1]);
+    layoutSection ("STAMPFEN", r3[1]);
+    layoutSection ("AUSGANG", r3[2]);
 }

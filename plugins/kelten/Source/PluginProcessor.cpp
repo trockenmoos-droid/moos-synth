@@ -103,7 +103,9 @@ void KeltenProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     const double rootNote = 36.0 + juce::jlimit (0, 11, (int) bordunTon->load());
     const float q = quinte->load();
     const float envCoef = (float) (1.0 - std::exp (-1.0 / ((playing ? 0.8 : 2.5) * sr)));
-    if (bord > 0.0f || droneEnv > 1.0e-4f)
+    if (bord <= 0.0f)        // ohne Bordun trotzdem mitführen: die Erde folgt dem Spiel
+        droneEnv += ((playing ? 1.0f : 0.0f) - droneEnv) * (1.0f - std::pow (1.0f - envCoef, (float) n));
+    else
     {
         for (int c = 0; c < 2; ++c) droneLp[c].set (1400.0, sr, 0.8f);
         for (int i = 0; i < n; ++i)
@@ -157,7 +159,7 @@ void KeltenProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             rumble += 0.002f * ((rng.nextFloat() * 2.0f - 1.0f) - rumble);
             float e = rumble * 0.25f * earth;
             if (rng.nextFloat() < earth * 0.0006f) e += (rng.nextFloat() - 0.5f) * 0.25f * earth;   // Knistern
-            e *= 0.3f + 0.7f * droneEnv;
+            e *= 0.3f * std::sqrt (droneEnv) + 0.7f * droneEnv;      // klingt nach dem Spiel langsam aus (keine Dauer-Störung)
             L[i] += e; R[i] += e * 0.9f;
         }
     }

@@ -6,6 +6,16 @@
 
 // RÖMER – Noricum: Hydraulis (Wasserorgel: der Luftdruck kommt aus einem Wasserkessel und schwankt,
 // dazu Blubbern) und Cornu (großes, rundes Bronzehorn).
+// Signal: das Cornu kennt nur die Naturtöne – gehaltene Taste = 4. Naturton, gespielt werden Signalrufe darüber
+namespace roemer
+{
+    inline const juce::StringArray signals { "Aus", "Signal", "Fanfare", "Zufall" };
+    inline const juce::StringArray signalRates { "1/4", "1/8", "1/8T", "1/16" };
+    inline double signalBeats (int i) { const double v[] = { 1.0, 0.5, 1.0 / 3.0, 0.25 }; return v[juce::jlimit (0, 3, i)]; }
+    // Naturtöne 2,3,4,5,6,8 relativ zum 4. Naturton (in Halbtönen, auf ganze Töne gerundet)
+    inline int harmonicSemis (int h) { switch (h) { case 2: return -12; case 3: return -5; case 5: return 4; case 6: return 7; case 8: return 12; default: return 0; } }
+}
+
 struct RoemerParams
 {
     float hydraulis, wasserdruck, blubbern, luft, reihen, cornu, hell, anblasen;
@@ -102,4 +112,14 @@ private:
 
     using AF = std::atomic<float>*;
     AF hydraulis{}, wasserdruck{}, blubbern{}, luft{}, reihen{}, cornu{}, hell{}, anblasen{}, attack{}, release{}, hall{}, raum{}, volume{};
+    AF signal{}, signalTakt{};
+    // Signal
+    void signalMidi (const juce::MidiBuffer& in, int n);
+    std::vector<int> heldKeys;
+    int sigStep = 0, sigNote = -1, sigOffLeft = 0;
+    double untilSig = 0.0;
+    juce::MidiBuffer sigBuf;
+    juce::Random sigRng;
+public:
+    std::atomic<int> signalNotes { 0 };
 };

@@ -52,6 +52,25 @@ int main (int argc, char** argv)
         tt::check (ok, "Klatsch-Muster erkannt: " + found + "  (soll x.xxx.x.xxx.)");
     }
 
+    // Stampfen: "1 und 3" bei 120 BPM -> tiefe Schläge bei 1.0 s, 2.0 s … (Takt 1 beginnt bei 0), dazwischen ruhig
+    {
+        proc.setCurrentProgram (0);
+        auto set = [&] (const char* id, float v) { auto* a = proc.apvts.getParameter (id); a->setValueNotifyingHost (a->convertTo0to1 (v)); };
+        set ("klatsch", 0.0f); set ("stampfen", 1.0f); set ("stampfmuster", 1.0f); set ("mensch", 0.0f); set ("raum", 0.0f);
+        juce::AudioBuffer<float> silence (2, (int) (sr * 3.1)); silence.clear();
+        auto out = tt::run (proc, silence, sr);
+        auto lowAt = [&] (double t)
+        {
+            double lp = 0.0, e = 0.0; const float a = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 200.0f / (float) sr);
+            for (int i = (int) (t * sr); i < (int) ((t + 0.12) * sr); ++i) { lp += a * (out.getSample (0, i) - lp); e += lp * lp; }
+            return std::sqrt (e / (0.12 * sr));
+        };
+        const double hit1 = lowAt (1.0), hit2 = lowAt (2.0), quiet = lowAt (1.5);
+        tt::check (tt::finite (out) && hit1 > 0.02 && hit2 > 0.02 && quiet < hit1 * 0.2 && tt::peak (out, 0, out.getNumSamples()) < 1.0f,
+                   juce::String::formatted ("Stampfen 1 und 3: Schlag %.3f / %.3f, dazwischen %.4f", hit1, hit2, quiet));
+        set ("stampfen", 0.0f); set ("klatsch", 0.7f);
+    }
+
     // Hörprobe: Plucks durch Gate + Klatschen
     {
         auto pl = tt::plucks (sr, 6.0, 6.0);
