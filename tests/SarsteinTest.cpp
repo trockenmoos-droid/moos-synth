@@ -75,6 +75,30 @@ int main (int argc, char** argv)
         tt::check (maxDiff < 1.0e-4f, juce::String::formatted ("Mix 0 ist bitgenau trocken (Latenz %d Samples, Abweichung %.6f)", lat, maxDiff));
     }
 
+    // Fundament: ein tiefer Sinus bleibt sauber (Anteil der Grundschwingung an der Gesamtenergie)
+    {
+        auto setv = [&] (const char* id, float v) { auto* a = proc.apvts.getParameter (id); a->setValueNotifyingHost (a->convertTo0to1 (v)); };
+        juce::AudioBuffer<float> bass (2, (int) (sr * 2));
+        for (int i = 0; i < bass.getNumSamples(); ++i) { const float v = 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 55.0 * i / sr); bass.setSample (0, i, v); bass.setSample (1, i, v); }
+        auto purity = [&] (float fund)
+        {
+            proc.setCurrentProgram (1);    // Granitblock
+            setv ("fundament", fund); setv ("trennung", 300.0f); setv ("tiefe", 20.0f);
+            auto out = tt::run (proc, bass, sr);
+            double s = 0, co = 0, tot = 0; const int a = (int) sr, b = (int) (sr * 1.9);
+            for (int i = a; i < b; ++i)
+            {
+                const double x = out.getSample (0, i), ph = 2.0 * juce::MathConstants<double>::pi * 55.0 * i / sr;
+                s += x * std::sin (ph); co += x * std::cos (ph); tot += x * x;
+            }
+            const double nn = b - a;
+            return (float) ((2.0 * (s * s + co * co) / nn) / juce::jmax (1.0e-9, tot));
+        };
+        const float p0 = purity (0.0f), p1 = purity (1.0f);
+        tt::check (p1 > p0 + 0.08f && p1 > 0.9f, juce::String::formatted ("Fundament: Grundton-Anteil %.2f -> %.2f", p0, p1));
+        setv ("fundament", 0.0f);
+    }
+
     // Hörprobe: Plucks durch 5 Gesteine
     {
         auto dry = tt::plucks (sr, 4.0, 3.2);

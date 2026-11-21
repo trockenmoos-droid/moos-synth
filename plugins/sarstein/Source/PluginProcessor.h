@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tm/TmProcessor.h>
+#include <tm/TmVoices.h>
 #include <juce_dsp/juce_dsp.h>
 
 // SARSTEIN – Verzerrer: vier Gesteinsarten als Kennlinien, Geröll (Asymmetrie),
@@ -47,8 +48,9 @@ private:
     int dryW = 0;
     float hp1[2] {}, hp2[2] {}, dc[2] {}, dcIn[2] {}, lp[2] {}, tiltLp[2] {}, hold[2] {};
     int holdCount = 0;
+    tmk::dsp::Svf fundHp[2][2], fundLp[2][2];   // Fundament: Linkwitz-Riley-Weiche (4. Ordnung)
     juce::SmoothedValue<float> driveSm, outSm, mixSm;
 
     using AF = std::atomic<float>*;
-    AF stein{}, drive{}, geroell{}, steinschlag{}, tiefe{}, ton{}, highcut{}, mix{}, output{}, autogain{};
+    AF stein{}, drive{}, geroell{}, steinschlag{}, tiefe{}, ton{}, highcut{}, mix{}, output{}, autogain{}, fundament{}, trennung{};
 };

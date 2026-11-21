@@ -34,6 +34,7 @@ SarsteinEditor::SarsteinEditor (SarsteinProcessor& p)
     addSection ("VERZERRUNG", { knob ("drive", "Drive"), knob ("geroell", u8 ("Ger\xc3\xb6ll")), knob ("steinschlag", "Steinschlag") });
     addSection ("KLANG", { knob ("tiefe", "Tiefe"), knob ("ton", "Ton"), knob ("highcut", "High Cut") });
     addSection ("AUSGANG", { knob ("mix", "Mix"), knob ("output", "Ausgang") });
+    addSection ("FUNDAMENT", { knob ("fundament", "Fundament"), knob ("trennung", "Trennung") });
     finishSetup();
 }
 
@@ -47,5 +48,7 @@ void SarsteinEditor::layoutBody (juce::Rectangle<int> body)
     layoutSection ("VERZERRUNG", r2[0]);
     layoutSection ("KLANG", r2[1]);
     // unten rechts bleibt frei: ein Fenster auf die Felswand
-    layoutSection ("AUSGANG", split (body, { 4, 6 })[0]);
+    auto r3 = split (body, { 1, 1 });
+    layoutSection ("FUNDAMENT", r3[0]);
+    layoutSection ("AUSGANG", r3[1]);
 }

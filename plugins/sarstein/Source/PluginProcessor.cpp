@@ -17,6 +17,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<P>  (ID { "mix", 1 },         "Mix", 0.0f, 1.0f, 1.0f));
     p.push_back (std::make_unique<P>  (ID { "output", 1 },      "Ausgang (dB)", -24.0f, 12.0f, 0.0f));
     p.push_back (std::make_unique<PB> (ID { "autogain", 1 },    "Auto-Pegel", true));
+    // Fundament (neu in 0.2): unter der Trennfrequenz bleibt der Klang sauber – der Berg steht auf festem Grund
+    p.push_back (std::make_unique<P>  (ID { "fundament", 1 },   "Fundament", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<P>  (ID { "trennung", 1 },    "Trennung (Hz)", tmk::skewed (40.0f, 600.0f, 150.0f), 160.0f));
     return { p.begin(), p.end() };
 }
 
@@ -31,6 +34,8 @@ static std::vector<tmk::Preset> factoryPresets()
         { "Sarstein-Wand",     { { "stein", 1 }, { "drive", 40.0f }, { "tiefe", 150.0f }, { "ton", 0.3f }, { "highcut", 7000.0f } } },
         { "Sanfter Bach",      { { "stein", 0 }, { "drive", 6.0f }, { "mix", 0.5f }, { "geroell", 0.25f } } },
         { "Drum-Bus Fels",     { { "stein", 2 }, { "drive", 14.0f }, { "geroell", 0.3f }, { "mix", 0.6f }, { "ton", 0.15f } } },
+        { "Bass auf Fels",     { { "stein", 1 }, { "drive", 28.0f }, { "fundament", 1.0f }, { "trennung", 180.0f }, { "ton", 0.2f }, { "highcut", 8000.0f } } },
+        { "Kick bleibt stehen", { { "stein", 2 }, { "drive", 20.0f }, { "geroell", 0.35f }, { "fundament", 0.85f }, { "trennung", 110.0f }, { "mix", 0.8f } } },
         { "Kristallh\xc3\xb6hle", { { "stein", 3 }, { "drive", 34.0f }, { "steinschlag", 0.25f }, { "ton", 0.4f }, { "mix", 0.55f } } },
     };
 }
@@ -43,7 +48,7 @@ SarsteinProcessor::SarsteinProcessor()
     auto get = [this] (const char* id) { return apvts.getRawParameterValue (id); };
     stein = get ("stein"); drive = get ("drive"); geroell = get ("geroell"); steinschlag = get ("steinschlag");
     tiefe = get ("tiefe"); ton = get ("ton"); highcut = get ("highcut"); mix = get ("mix"); output = get ("output");
-    autogain = get ("autogain");
+    autogain = get ("autogain"); fundament = get ("fundament"); trennung = get ("trennung");
 }
 
 bool SarsteinProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -65,6 +70,8 @@ void SarsteinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dryW = 0;
     for (int c = 0; c < 2; ++c) hp1[c] = hp2[c] = dc[c] = dcIn[c] = lp[c] = tiltLp[c] = hold[c] = 0.0f;
     holdCount = 0;
+    for (auto& f : fundHp) { f[0].reset(); f[1].reset(); }
+    for (auto& f : fundLp) { f[0].reset(); f[1].reset(); }
     driveSm.reset (sr, 0.03); driveSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (drive->load()));
     outSm.reset (sr, 0.03);   outSm.setCurrentAndTargetValue (1.0f);
     mixSm.reset (sr, 0.03);   mixSm.setCurrentAndTargetValue (mix->load());
@@ -90,6 +97,10 @@ void SarsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const float lowG  = juce::Decibels::decibelsToGain (-6.0f * tilt), highG = juce::Decibels::decibelsToGain (6.0f * tilt);
     const float aDc   = (float) std::exp (-juce::MathConstants<double>::twoPi * 12.0 / sr);
     const float biasOut = sarstein::shape (st, bias);
+    const float fund = fundament->load();
+    const float fundOut = juce::Decibels::decibelsToGain (output->load());
+    for (int c = 0; c < 2; ++c)
+        for (int s = 0; s < 2; ++s) { fundHp[c][s].set (trennung->load(), sr, 0.7071f); fundLp[c][s].set (trennung->load(), sr, 0.7071f); }
 
     // Auto-Pegel: grobe Kompensation des Drives, damit lauter nicht automatisch "besser" klingt
     float makeup = juce::Decibels::decibelsToGain (output->load());
@@ -117,6 +128,13 @@ void SarsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         for (int i = 0; i < n; ++i)
         {
             float x = d[i];
+            if (fund > 0.0f)       // Fundament: Tiefen gehen an der Verzerrung vorbei
+            {
+                float l, b, hh, h2;
+                fundHp[c][0].process (x, l, b, hh);
+                fundHp[c][1].process (hh, l, b, h2);
+                x += fund * (h2 - x);
+            }
             hp1[c] = x + aHp * (hp1[c] - x); x -= hp1[c];
             hp2[c] = x + aHp * (hp2[c] - x); x -= hp2[c];
             d[i] = x * driveCurve[(size_t) i];
@@ -168,7 +186,13 @@ void SarsteinProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuf
             // Dry um die Oversampling-Latenz verzögern, damit Mix phasenrichtig ist
             dryRing[c][(size_t) dryW] = dry.getSample (c, i);
             const float dr = dryRing[c][(size_t) ((dryW - lat + 256) & 255)];
-            d[i] = x * m + dr * (1.0f - m);
+            float low = 0.0f;
+            if (fund > 0.0f)
+            {
+                const float l1 = fundLp[c][0].lowpass (dr);
+                low = fundLp[c][1].lowpass (l1) * fund * fundOut;
+            }
+            d[i] = (x + low) * m + dr * (1.0f - m);
             outPeak = juce::jmax (outPeak, std::abs (d[i]));
         }
         dryW = (dryW + 1) & 255;
